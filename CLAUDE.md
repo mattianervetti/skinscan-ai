@@ -51,7 +51,8 @@ Queste regole NON vanno affidate al modello linguistico: vanno implementate come
 ## 9. Fasi del progetto e stato
 0. Preparazione — ambiente, cartella, CLAUDE.md, scelta del modello gratuito. → COMPLETATA
    Decisioni prese: Python 3.14.7 con ambiente virtuale .venv; modello linguistico gemini-2.5-flash (Google Gemini, gratuito); librerie verificate e installate (streamlit, langgraph, langchain-google-genai, python-dotenv, pillow, opencv-python-headless, truststore); connessione a Gemini testata con successo; chiave API gestita solo via .env, mai versionata; repository Git inizializzato in locale.
-1. Scheletro — struttura del progetto, database, app Streamlit vuota funzionante. → da fare
+1. Scheletro — struttura del progetto, database, app Streamlit vuota funzionante. → COMPLETATA
+   Costruito: struttura cartelle (pages/, agenti/, nucleo/, data/, test/); nucleo/modello_linguistico.py (unico punto di contatto con Gemini); database SQLite con 12 tabelle, popolato con i 4 pazienti demo (Marta, Luca, Paolo, Giulia) coerenti coi questionari e le lesioni/foto attese; 5 immagini sintetiche generate via codice; resetta_database() per ripristinare la demo; app Streamlit a 4 pagine (Home, Paziente, Dermatologo, Log agenti) con disclaimer obbligatorio e barra laterale (pulsante "Reimposta demo") centralizzati in interfaccia.py e richiamati da un unico punto di ingresso (app.py), così nessuna pagina futura può dimenticarli; README.md creato per chi arriva al repository senza contesto.
 2. Agenti uno alla volta (1→5), ciascuno testato su un caso demo prima del successivo. → da fare
 3. Supervisore e flusso completo con intervento del dermatologo. → da fare
 4. Interfacce rifinite e 4 casi demo completi. → da fare
@@ -62,3 +63,9 @@ Queste regole NON vanno affidate al modello linguistico: vanno implementate come
 - Al termine di ogni fase aggiorna questo CLAUDE.md con lo stato raggiunto e le decisioni prese, poi fai un commit Git con un messaggio chiaro in italiano.
 - Non installare pacchetti non necessari. Tieni sempre aggiornato requirements.txt.
 - Non creare file fuori dalla cartella del progetto.
+
+## 11. Comandi utili (PowerShell, dalla cartella del progetto)
+- Avviare l'app: `.\.venv\Scripts\python.exe -m streamlit run app.py` (si ferma con Ctrl+C)
+- Test modulo Gemini: `.\.venv\Scripts\python.exe .\test\test_modello_linguistico.py`
+- Test database: `.\.venv\Scripts\python.exe .\test\test_database.py`
+- Test app: `.\.venv\Scripts\python.exe .\test\test_app.py`

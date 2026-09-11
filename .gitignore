@@ -18,3 +18,7 @@ data/uploads/
 
 # Secrets usati solo in fase di pubblicazione su Streamlit Community Cloud
 .streamlit/secrets.toml
+
+# Impostazioni locali di Claude Code (l'assistente usato per sviluppare il progetto):
+# non è codice del progetto, è specifico di questo computer.
+.claude/
