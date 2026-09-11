@@ -1,0 +1,20 @@
+# Chiave API e segreti: non deve MAI finire su GitHub
+.env
+
+# Ambiente virtuale Python: si ricrea in locale, non va versionato
+.venv/
+
+# File compilati/cache generati automaticamente da Python
+__pycache__/
+*.pyc
+
+# Database SQLite: viene rigenerato dai dati demo, non va versionato
+*.db
+*.sqlite
+*.sqlite3
+
+# Immagini caricate dagli utenti durante l'uso dell'app
+data/uploads/
+
+# Secrets usati solo in fase di pubblicazione su Streamlit Community Cloud
+.streamlit/secrets.toml

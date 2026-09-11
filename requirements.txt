@@ -1,0 +1,7 @@
+streamlit==1.63.0
+langgraph==1.2.11
+langchain-google-genai==4.4.0
+python-dotenv==1.2.3
+pillow==12.3.0
+opencv-python-headless==5.0.0.93
+truststore==0.10.4
