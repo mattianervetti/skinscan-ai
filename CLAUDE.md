@@ -58,6 +58,12 @@ Queste regole NON vanno affidate al modello linguistico: vanno implementate come
 4. Interfacce rifinite e 4 casi demo completi. → da fare
 5. Pubblicazione online e checklist per la demo dal vivo (incluso video di riserva registrato). → da fare
 
+App online (Streamlit Community Cloud): https://skinscan-ai-2ehqokwuaoreezapnmoicw.streamlit.app/
+Repository GitHub: https://github.com/mattianervetti/skinscan-ai
+Nota: Streamlit Community Cloud esegue Python 3.14.7, la stessa versione usata in locale.
+ATTENZIONE: la chiave API di Gemini NON è ancora configurata nei secrets dell'app online. Va aggiunta prima della Fase 2, quando gli agenti inizieranno a usare il modello linguistico.
+Procedura di pubblicazione aggiornamenti: commit e push sul ramo main su GitHub — Streamlit Community Cloud rileva il push e si aggiorna da solo, senza bisogno di altre azioni.
+
 ## 10. Regole operative
 - Ogni cosa che costruisci va testata prima di dichiararla finita: scrivi ed esegui un test o uno script di verifica e mostrami il risultato.
 - Al termine di ogni fase aggiorna questo CLAUDE.md con lo stato raggiunto e le decisioni prese, poi fai un commit Git con un messaggio chiaro in italiano.
