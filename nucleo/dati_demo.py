@@ -9,7 +9,7 @@ import random
 import sqlite3
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 _CARTELLA_PROGETTO = Path(__file__).resolve().parent.parent
 CARTELLA_IMMAGINI_DEMO = _CARTELLA_PROGETTO / "data" / "demo" / "immagini"
@@ -98,6 +98,30 @@ def _crea_versione_sfocata(percorso_originale: Path, percorso_sfocato: Path) -> 
         immagine_sfocata.save(percorso_sfocato)
 
 
+def _crea_versione_scura(percorso_originale: Path, percorso_scura: Path, fattore: float = 0.10) -> None:
+    """Crea una copia sottoesposta (troppo scura) di un'immagine esistente, per
+    testare il rifiuto per luminosità insufficiente."""
+    with Image.open(percorso_originale) as immagine:
+        immagine_scura = ImageEnhance.Brightness(immagine).enhance(fattore)
+        immagine_scura.save(percorso_scura)
+
+
+def _crea_versione_chiara(percorso_originale: Path, percorso_chiara: Path, fattore: float = 2.6) -> None:
+    """Crea una copia sovraesposta (troppo chiara) di un'immagine esistente, per
+    testare il rifiuto per eccesso di luminosità."""
+    with Image.open(percorso_originale) as immagine:
+        immagine_chiara = ImageEnhance.Brightness(immagine).enhance(fattore)
+        immagine_chiara.save(percorso_chiara)
+
+
+def _crea_versione_a_bassa_risoluzione(percorso_originale: Path, percorso_bassa: Path, lato: int = 80) -> None:
+    """Crea una copia a risoluzione ridotta di un'immagine esistente, per testare
+    il rifiuto per immagine troppo piccola."""
+    with Image.open(percorso_originale) as immagine:
+        immagine_piccola = immagine.resize((lato, lato))
+        immagine_piccola.save(percorso_bassa)
+
+
 def genera_immagini_demo() -> dict[str, Path]:
     """Genera (se non esistono già su disco) le immagini sintetiche della demo
     e restituisce un dizionario {nome_logico: percorso}."""
@@ -107,6 +131,12 @@ def genera_immagini_demo() -> dict[str, Path]:
         "marta_sfocata": CARTELLA_IMMAGINI_DEMO / "marta_2026-09-01_sfocata.png",
         "giulia_nitida": CARTELLA_IMMAGINI_DEMO / "giulia_2026-09-01_nitida.png",
         "paolo_nitida": CARTELLA_IMMAGINI_DEMO / "paolo_2026-09-01_nitida.png",
+        # Varianti aggiuntive derivate da marta_nitida, per verificare (e coprire
+        # con test) tutti e 4 i percorsi di rifiuto dell'agente GUIDA ALLA FOTO,
+        # non solo la sfocatura.
+        "marta_troppo_scura": CARTELLA_IMMAGINI_DEMO / "marta_2026-09-01_troppo_scura.png",
+        "marta_troppo_chiara": CARTELLA_IMMAGINI_DEMO / "marta_2026-09-01_troppo_chiara.png",
+        "marta_risoluzione_bassa": CARTELLA_IMMAGINI_DEMO / "marta_2026-09-01_risoluzione_bassa.png",
     }
 
     # Marta: stesso seed nella foto precedente e in quella attuale, ma raggio maggiore
@@ -123,6 +153,13 @@ def genera_immagini_demo() -> dict[str, Path]:
 
     if not percorsi["paolo_nitida"].exists():
         _disegna_lesione_sintetica(percorsi["paolo_nitida"], seed=3, raggio_base=38)
+
+    if not percorsi["marta_troppo_scura"].exists():
+        _crea_versione_scura(percorsi["marta_nitida"], percorsi["marta_troppo_scura"])
+    if not percorsi["marta_troppo_chiara"].exists():
+        _crea_versione_chiara(percorsi["marta_nitida"], percorsi["marta_troppo_chiara"])
+    if not percorsi["marta_risoluzione_bassa"].exists():
+        _crea_versione_a_bassa_risoluzione(percorsi["marta_nitida"], percorsi["marta_risoluzione_bassa"])
 
     return percorsi
 

@@ -4,6 +4,7 @@ dell'esito prodotto dall'agente ACCOGLIENZA."""
 import streamlit as st
 
 from agenti.accoglienza import rigenera_testo_paziente, valuta_questionario
+from agenti.guida_foto import ISTRUZIONI_PRE_SCATTO, TENTATIVI_MASSIMI, conta_tentativi, valuta_foto
 from nucleo.database import crea_paziente_con_questionario, ottieni_connessione
 
 _NOMI_PAZIENTI_DEMO = ["Marta", "Luca", "Paolo", "Giulia"]
@@ -96,6 +97,75 @@ def _mostra_esito(esito: dict) -> None:
             "linguistico non era raggiungibile in questo momento. La priorità e il "
             "percorso assegnati non sono comunque influenzati da questo."
         )
+
+
+def _mostra_esito_foto(risultato: dict) -> None:
+    st.write(
+        f"Nitidezza: {risultato['nitidezza']:.1f} — "
+        f"Luminosità: {risultato['luminosita']:.1f} — "
+        f"Risoluzione: {risultato['larghezza']}×{risultato['altezza']}"
+    )
+
+    if risultato["qualita_insufficiente_forzata"]:
+        st.warning(f"⚠️ {risultato['testo_paziente']}")
+    elif risultato["accettata"]:
+        st.success(f"✅ {risultato['testo_paziente']}")
+    else:
+        st.error(f"❌ Foto non utilizzabile (tentativo {risultato['tentativo_numero']}/{risultato['tentativi_massimi']})")
+        st.write(risultato["testo_paziente"])
+
+    if risultato["fonte_testo"] == "riserva" and not risultato["accettata"] and not risultato["qualita_insufficiente_forzata"]:
+        st.caption(
+            "ℹ️ Messaggio generato con contenuto di riserva: il modello linguistico "
+            "non era raggiungibile in questo momento."
+        )
+
+
+def _mostra_sezione_foto(caso_id: int) -> None:
+    st.subheader("Acquisizione foto")
+
+    esiti_foto = st.session_state.setdefault("esiti_foto", {})
+    ultimo_risultato = esiti_foto.get(caso_id)
+
+    if ultimo_risultato is not None:
+        _mostra_esito_foto(ultimo_risultato)
+        if ultimo_risultato["accettata"]:
+            return
+        st.divider()
+
+    st.markdown(ISTRUZIONI_PRE_SCATTO)
+
+    tentativo_prossimo = conta_tentativi(caso_id) + 1
+    st.caption(f"Tentativo {tentativo_prossimo} di {TENTATIVI_MASSIMI}")
+
+    modalita_foto = st.radio(
+        "Come vuoi fornire la foto?",
+        ["Fotocamera", "Carica un file"],
+        horizontal=True,
+        key=f"modalita_foto_{caso_id}_{tentativo_prossimo}",
+    )
+
+    dati_immagine = None
+    if modalita_foto == "Fotocamera":
+        scatto = st.camera_input("Scatta la foto", key=f"camera_{caso_id}_{tentativo_prossimo}")
+        if scatto is not None:
+            dati_immagine = scatto.getvalue()
+    else:
+        file_caricato = st.file_uploader(
+            "Carica un'immagine (utile in demo: usa i file in data/demo/immagini)",
+            type=["png", "jpg", "jpeg"],
+            key=f"upload_{caso_id}_{tentativo_prossimo}",
+        )
+        if file_caricato is not None:
+            dati_immagine = file_caricato.getvalue()
+
+    if dati_immagine is not None:
+        st.image(dati_immagine, caption="Foto ricevuta", width=250)
+        if st.button("Invia foto", key=f"invia_{caso_id}_{tentativo_prossimo}"):
+            with st.spinner("Verifica qualità in corso..."):
+                risultato = valuta_foto(caso_id, dati_immagine)
+            esiti_foto[caso_id] = risultato
+            st.rerun()
 
 
 def mostra_pagina() -> None:
@@ -195,4 +265,9 @@ def mostra_pagina() -> None:
 
     if "ultimo_esito" in st.session_state:
         st.divider()
-        _mostra_esito(st.session_state["ultimo_esito"])
+        esito = st.session_state["ultimo_esito"]
+        _mostra_esito(esito)
+
+        if esito["percorso"] == "foto":
+            st.divider()
+            _mostra_sezione_foto(esito["caso_id"])

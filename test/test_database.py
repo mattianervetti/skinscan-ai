@@ -83,7 +83,7 @@ def test_reset_riporta_alla_situazione_di_partenza():
 
 def test_immagini_demo_esistono_e_sono_leggibili():
     percorsi = genera_immagini_demo()
-    assert len(percorsi) == 5
+    assert len(percorsi) == 8  # 5 originali + 3 varianti (scura/chiara/bassa risoluzione) per l'agente GUIDA ALLA FOTO
     for percorso in percorsi.values():
         assert percorso.exists(), f"Immagine mancante: {percorso}"
         with Image.open(percorso) as immagine:

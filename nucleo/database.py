@@ -78,6 +78,10 @@ CREATE TABLE IF NOT EXISTS analisi_classificatore (
 -- essere ricostruibile cosa è stato comunicato, non solo quale decisione è stata
 -- presa. Permettono anche al paziente di rivedere l'esito senza rigenerarlo, e di
 -- non consumare quota del modello linguistico durante le demo.
+-- qualita_foto_insufficiente è un flag separato da "stato": indica che la foto è
+-- stata accettata dopo 3 tentativi falliti (regola di non esclusione dell'agente
+-- GUIDA ALLA FOTO) e deve comparire ben visibile al dermatologo, indipendentemente
+-- dalla fase in cui si trova il caso.
 CREATE TABLE IF NOT EXISTS casi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     paziente_id INTEGER NOT NULL REFERENCES pazienti(id),
@@ -87,7 +91,8 @@ CREATE TABLE IF NOT EXISTS casi (
     data_apertura TEXT NOT NULL,
     testo_paziente TEXT,
     fonte_testo TEXT CHECK (fonte_testo IN ('modello', 'riserva')),
-    data_testo TEXT
+    data_testo TEXT,
+    qualita_foto_insufficiente INTEGER NOT NULL DEFAULT 0 CHECK (qualita_foto_insufficiente IN (0,1))
 );
 
 -- Decisioni del dermatologo su un caso: approvazione o modifica.
