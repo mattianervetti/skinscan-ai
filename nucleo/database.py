@@ -72,14 +72,22 @@ CREATE TABLE IF NOT EXISTS analisi_classificatore (
     data_analisi TEXT NOT NULL
 );
 
--- Casi: il fascicolo di un paziente, con priorità e stato di avanzamento.
+-- Casi: il fascicolo di un paziente, con priorità, stato di avanzamento e il testo
+-- effettivamente comunicato al paziente. Queste tre colonne (testo_paziente,
+-- fonte_testo, data_testo) servono per tracciabilità: in ambito sanitario deve
+-- essere ricostruibile cosa è stato comunicato, non solo quale decisione è stata
+-- presa. Permettono anche al paziente di rivedere l'esito senza rigenerarlo, e di
+-- non consumare quota del modello linguistico durante le demo.
 CREATE TABLE IF NOT EXISTS casi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     paziente_id INTEGER NOT NULL REFERENCES pazienti(id),
     lesione_id INTEGER REFERENCES lesioni(id),
     priorita TEXT CHECK (priorita IN ('alta', 'media', 'bassa')),
     stato TEXT NOT NULL DEFAULT 'aperto',
-    data_apertura TEXT NOT NULL
+    data_apertura TEXT NOT NULL,
+    testo_paziente TEXT,
+    fonte_testo TEXT CHECK (fonte_testo IN ('modello', 'riserva')),
+    data_testo TEXT
 );
 
 -- Decisioni del dermatologo su un caso: approvazione o modifica.
@@ -157,6 +165,55 @@ _TABELLE_IN_ORDINE_DI_CANCELLAZIONE = [
     "questionari",
     "pazienti",
 ]
+
+
+def crea_paziente_con_questionario(
+    *,
+    nome: str,
+    eta: int,
+    fototipo: int,
+    categoria_nei: str,
+    familiarita_melanoma: bool,
+    melanoma_pregresso: bool,
+    immunosoppressione: bool,
+    neo_cambiato: bool,
+) -> int:
+    """Inserisce un nuovo paziente e il suo questionario (usato dalla pagina
+    Paziente quando si compila un questionario nuovo, non uno dei 4 demo).
+    Restituisce l'id del paziente creato."""
+    from datetime import date
+
+    oggi = date.today().isoformat()
+
+    connessione = ottieni_connessione()
+    try:
+        cursore = connessione.execute(
+            "INSERT INTO pazienti (nome, eta, fototipo, data_creazione) VALUES (?, ?, ?, ?)",
+            (nome, eta, fototipo, oggi),
+        )
+        id_paziente = cursore.lastrowid
+
+        connessione.execute(
+            """INSERT INTO questionari
+               (paziente_id, data_compilazione, fototipo, categoria_nei,
+                familiarita_melanoma, melanoma_pregresso, immunosoppressione, neo_cambiato)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                id_paziente,
+                oggi,
+                fototipo,
+                categoria_nei,
+                int(familiarita_melanoma),
+                int(melanoma_pregresso),
+                int(immunosoppressione),
+                int(neo_cambiato),
+            ),
+        )
+        connessione.commit()
+    finally:
+        connessione.close()
+
+    return id_paziente
 
 
 def crea_tabelle(connessione: sqlite3.Connection) -> None:
