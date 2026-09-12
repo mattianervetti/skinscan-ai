@@ -4,8 +4,14 @@ dell'esito prodotto dall'agente ACCOGLIENZA."""
 import streamlit as st
 
 from agenti.accoglienza import rigenera_testo_paziente, valuta_questionario
+from agenti.analisi import analizza_caso
 from agenti.guida_foto import ISTRUZIONI_PRE_SCATTO, TENTATIVI_MASSIMI, conta_tentativi, valuta_foto
 from nucleo.database import crea_paziente_con_questionario, ottieni_connessione
+
+_STATO_AVANZAMENTO_LEGGIBILE = {
+    "in_coda_dermatologo": "Il caso è stato inoltrato al dermatologo per la valutazione.",
+    "analisi_rassicurante": "Il caso prosegue con i controlli di routine.",
+}
 
 _NOMI_PAZIENTI_DEMO = ["Marta", "Luca", "Paolo", "Giulia"]
 
@@ -121,6 +127,18 @@ def _mostra_esito_foto(risultato: dict) -> None:
         )
 
 
+def _mostra_esito_analisi(esito_analisi: dict) -> None:
+    st.subheader("Stato di avanzamento")
+    st.write(_STATO_AVANZAMENTO_LEGGIBILE[esito_analisi["stato"]])
+    st.write(esito_analisi["testo_paziente"])
+
+    if esito_analisi["fonte_testo"] == "riserva":
+        st.caption(
+            "ℹ️ Messaggio generato con contenuto di riserva: il modello linguistico "
+            "non era raggiungibile in questo momento."
+        )
+
+
 def _mostra_sezione_foto(caso_id: int) -> None:
     st.subheader("Acquisizione foto")
 
@@ -130,6 +148,11 @@ def _mostra_sezione_foto(caso_id: int) -> None:
     if ultimo_risultato is not None:
         _mostra_esito_foto(ultimo_risultato)
         if ultimo_risultato["accettata"]:
+            esiti_analisi = st.session_state.setdefault("esiti_analisi", {})
+            esito_analisi = esiti_analisi.get(caso_id)
+            if esito_analisi is not None:
+                st.divider()
+                _mostra_esito_analisi(esito_analisi)
             return
         st.divider()
 
@@ -165,6 +188,12 @@ def _mostra_sezione_foto(caso_id: int) -> None:
             with st.spinner("Verifica qualità in corso..."):
                 risultato = valuta_foto(caso_id, dati_immagine)
             esiti_foto[caso_id] = risultato
+
+            if risultato["accettata"]:
+                with st.spinner("Elaborazione delle immagini in corso..."):
+                    esito_analisi = analizza_caso(caso_id)
+                st.session_state.setdefault("esiti_analisi", {})[caso_id] = esito_analisi
+
             st.rerun()
 
 

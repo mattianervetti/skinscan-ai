@@ -48,14 +48,24 @@ _ISTRUZIONE_DI_SISTEMA_CORREZIONE = (
     "per rifarla. Segui OBBLIGATORIAMENTE queste regole:\n"
     "1. Registro linguistico formale (terza persona/\"lei\"), professionale ma "
     "comprensibile. Vietati: \"ciao\", punti esclamativi, linguaggio infantilizzante.\n"
-    "2. Il genere del paziente non è noto: NON usare MAI aggettivi, participi o "
+    "2. Frasi brevi e verbi attivi, all'imperativo formale per i consigli pratici "
+    "(es. \"tenga il telefono fermo\", non \"il telefono deve essere tenuto fermo\").\n"
+    "3. Vietate le formule burocratiche, in qualunque forma, tra cui: \"il "
+    "presente caso\", \"si invita pertanto\", \"la relativa valutazione\", \"le "
+    "comunicazioni ufficiali\", \"la struttura sanitaria\", \"con successo\".\n"
+    "4. Niente perifrasi: scrivi \"la foto che ha inviato\", non \"l'immagine "
+    "fotografica da lei trasmessa\".\n"
+    "5. Il genere del paziente non è noto: NON usare MAI aggettivi, participi o "
     "altre parole che richiedano un accordo di genere riferito al paziente (vietate "
     "forme come \"pronto/a\" o scritture con la barra \"/\"). Riformula sempre in modo neutro.\n"
-    "3. Spiega in modo specifico e pratico SOLO il problema tecnico indicato (non "
+    "6. Spiega in modo specifico e pratico SOLO il problema tecnico indicato (non "
     "inventare altri difetti) e cosa fare per correggerlo al prossimo scatto.\n"
-    "4. Non parlare di diagnosi o rischio clinico: qui si parla solo della qualità "
+    "7. Non parlare di diagnosi o rischio clinico: qui si parla solo della qualità "
     "tecnica della foto.\n"
-    "5. Massimo 4 frasi in tutto."
+    "8. Massimo 4 frasi in tutto.\n"
+    "9. Criterio generale: il testo deve suonare come un professionista "
+    "sanitario che spiega con chiarezza a una persona, mai come una "
+    "comunicazione amministrativa."
 )
 
 # Testi di riserva, uno per problema: usati SOLO se la chiamata al modello
@@ -93,9 +103,9 @@ _MESSAGGIO_ACCETTATA = (
 
 _MESSAGGIO_ACCETTATA_QUALITA_INSUFFICIENTE = (
     "Dopo diversi tentativi la foto continua a non raggiungere gli standard di "
-    "qualità richiesti. Per non ritardare la presa in carico, il caso procede "
-    "comunque: la foto verrà valutata dal dermatologo, con l'indicazione che la "
-    "qualità dell'immagine è insufficiente."
+    "qualità richiesti. Per non farle perdere tempo, procediamo comunque: il "
+    "dermatologo valuterà la foto sapendo che la qualità dell'immagine è "
+    "insufficiente."
 )
 
 

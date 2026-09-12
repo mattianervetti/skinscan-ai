@@ -12,6 +12,16 @@ from pathlib import Path
 _CARTELLA_PROGETTO = Path(__file__).resolve().parent.parent
 PERCORSO_DATABASE = _CARTELLA_PROGETTO / "data" / "skinscan.db"
 
+# Versione dello schema del database. REGOLA: va incrementata OGNI VOLTA che si
+# modifica _SCHEMA_SQL (nuova tabella, nuova colonna, CHECK cambiato, ecc.),
+# altrimenti un database già creato su un computer/deploy precedente resta con
+# lo schema vecchio e le query sulle colonne nuove falliscono con errori come
+# "table X has no column named Y" — è già successo tre volte in questo progetto.
+# La versione è registrata nel database stesso (PRAGMA user_version, un intero
+# integrato in SQLite pensato apposta per questo). Vedi inizializza_database()
+# per cosa succede quando non coincide.
+VERSIONE_SCHEMA = 1
+
 
 def ottieni_connessione() -> sqlite3.Connection:
     """Apre una connessione al database, creando la cartella data/ se non esiste."""
@@ -64,11 +74,19 @@ CREATE TABLE IF NOT EXISTS foto_lesioni (
 );
 
 -- Esiti del classificatore simulato (analizza_lesione) per una singola foto.
+-- avviso_simulazione è salvato in QUESTA riga, insieme al dato numerico, non in
+-- una tabella o costante separata: la dichiarazione "è una simulazione" deve
+-- poter essere mostrata sempre accanto a classificazione/confidenza (rischio di
+-- ancoraggio su un numero preciso), mai recuperabile separatamente da chi legge
+-- solo esito/confidenza.
 CREATE TABLE IF NOT EXISTS analisi_classificatore (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     foto_id INTEGER NOT NULL REFERENCES foto_lesioni(id),
-    esito TEXT NOT NULL CHECK (esito IN ('rassicurante', 'sospetto')),
-    dettaglio TEXT,
+    esito TEXT NOT NULL CHECK (esito IN ('sospetta', 'probabilmente_benigna', 'non_conclusiva')),
+    confidenza REAL NOT NULL,
+    caratteristiche TEXT,
+    confronto_storico TEXT,
+    avviso_simulazione TEXT NOT NULL,
     data_analisi TEXT NOT NULL
 );
 
@@ -232,17 +250,57 @@ def _database_ha_dati(connessione: sqlite3.Connection) -> bool:
     return cursore.fetchone()[0] > 0
 
 
+def _versione_schema_nel_database(connessione: sqlite3.Connection) -> int:
+    return connessione.execute("PRAGMA user_version").fetchone()[0]
+
+
+def _registra_versione_schema(connessione: sqlite3.Connection, versione: int) -> None:
+    # PRAGMA non supporta i normali parametri "?" di sqlite3: la versione qui è
+    # sempre la costante interna VERSIONE_SCHEMA (un intero, mai input esterno),
+    # quindi è sicuro comporla direttamente nella stringa.
+    connessione.execute(f"PRAGMA user_version = {int(versione)}")
+
+
 def inizializza_database() -> None:
-    """Crea le tabelle se mancano e popola i dati demo se il database è vuoto.
+    """Crea le tabelle se mancano, ricrea il database da zero se lo schema è
+    cambiato, e popola i dati demo se il database è vuoto.
 
     Va chiamata all'avvio dell'applicazione. Su Streamlit Community Cloud il disco
     viene azzerato a ogni riavvio dell'app: questa funzione ricrea tutto da zero,
     così l'app online non risulta mai vuota. In locale, se il database esiste già
-    con dei dati, non li duplica.
+    con dei dati e con lo schema aggiornato, non li duplica.
+
+    Gestione della versione dello schema: se la versione registrata nel database
+    (PRAGMA user_version) è inferiore a VERSIONE_SCHEMA, oppure non è mai stata
+    registrata (database creato prima che esistesse questo meccanismo), il
+    database viene cancellato e ricreato da zero, in silenzio, senza mostrare
+    errori tecnici all'utente. Questo è accettabile SOLO perché qui il database
+    contiene esclusivamente dati demo rigenerabili — in un sistema con dati
+    reali servirebbero invece migrazioni che preservano il contenuto esistente
+    (ALTER TABLE, copia dei dati, ecc.), non una cancellazione.
     """
     # Importato qui (non in cima al file) per mantenere questo modulo indipendente
     # dai dati specifici della demo, che potranno cambiare senza toccare database.py.
     from nucleo.dati_demo import popola_dati_demo
+
+    connessione = ottieni_connessione()
+    try:
+        versione_nel_database = _versione_schema_nel_database(connessione)
+    finally:
+        connessione.close()
+
+    if versione_nel_database < VERSIONE_SCHEMA:
+        if PERCORSO_DATABASE.exists():
+            PERCORSO_DATABASE.unlink()
+        connessione = ottieni_connessione()
+        try:
+            crea_tabelle(connessione)
+            popola_dati_demo(connessione)
+            _registra_versione_schema(connessione, VERSIONE_SCHEMA)
+            connessione.commit()
+        finally:
+            connessione.close()
+        return
 
     connessione = ottieni_connessione()
     try:
@@ -275,5 +333,7 @@ def resetta_database() -> None:
 
         connessione.commit()
         popola_dati_demo(connessione)
+        _registra_versione_schema(connessione, VERSIONE_SCHEMA)
+        connessione.commit()
     finally:
         connessione.close()

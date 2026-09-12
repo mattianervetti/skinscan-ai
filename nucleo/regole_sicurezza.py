@@ -139,3 +139,33 @@ def decidi_percorso(priorita: str, neo_cambiato: bool) -> dict:
         }
 
     raise ValueError(f"priorita non valida: {priorita!r} (attesi 'bassa', 'media', 'alta')")
+
+
+def decidi_destinazione_dopo_analisi(*, gia_destinato_dermatologo: bool, classificazione: str) -> dict:
+    """Applica la regola di sicurezza dell'agente ANALISI: un esito sospetto o
+    non conclusivo manda SEMPRE al dermatologo, anche se il caso non lo era già.
+
+    Le altre due regole di sicurezza (neo cambiato, priorità alta) sono già
+    state applicate da decidi_percorso all'apertura del caso: qui si rispetta
+    quella decisione (gia_destinato_dermatologo) e si aggiunge solo la regola
+    legata all'esito del classificatore, senza mai "retrocedere" un caso già
+    destinato al dermatologo.
+
+    Restituisce {"destinato_dermatologo": bool, "motivo": str}.
+    """
+    if gia_destinato_dermatologo:
+        return {
+            "destinato_dermatologo": True,
+            "motivo": "Il caso era già destinato al dermatologo (neo cambiato o priorità alta, decisi dall'agente ACCOGLIENZA).",
+        }
+
+    if classificazione in ("sospetta", "non_conclusiva"):
+        return {
+            "destinato_dermatologo": True,
+            "motivo": f"L'esito del classificatore è {classificazione.replace('_', ' ')}: il caso va al dermatologo.",
+        }
+
+    return {
+        "destinato_dermatologo": False,
+        "motivo": "Esito rassicurante e nessun altro fattore di rischio attivo: il caso prosegue con i controlli di routine.",
+    }
