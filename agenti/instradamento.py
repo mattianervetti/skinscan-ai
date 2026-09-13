@@ -15,21 +15,50 @@ adattare caso per caso.
 
 SOGLIA DI SOLLECITO (scritta nel codice, non affidata al modello linguistico):
 dopo 2 solleciti senza conferma, l'appuntamento viene scalato a un operatore
-umano, che contatta il paziente al di fuori della piattaforma.
+umano, che contatta il paziente al di fuori della piattaforma. Scalo anche
+indipendente dal conteggio: se la data simulata raggiunge quella
+dell'appuntamento proposto senza conferma, si scala subito a un operatore,
+anche se non erano ancora stati inviati 2 solleciti — non avrebbe senso
+sollecitare per un appuntamento già scaduto.
+
+DATA SIMULATA (vedi nucleo/tempo_simulato.py): questo agente non usa
+date.today()/datetime.now() per datare notifiche, proposte di appuntamento,
+solleciti ed escalation, ma la data simulata condivisa del progetto. Motivo:
+senza una data che avanza, i due solleciti e l'escalation di un caso
+risulterebbero inviati tutti nello stesso istante reale, e la sequenza
+mostrata al pubblico contraddirebbe il racconto ("sono passati giorni senza
+risposta"). Gli Agenti 1, 2 e 3 non sono toccati da questo: continuano a usare
+la data reale.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
+from nucleo import tempo_simulato
 from nucleo.database import ottieni_connessione
 from nucleo.registro_azioni import registra_azione
 
 NOME_AGENTE = "INSTRADAMENTO"
 
-_GIORNI_PRIMA_TELEVISITA = 3
+_NUMERO_MASSIMO_SOLLECITI = 2
+
+# Giorni di cui avanza la data simulata a ogni sollecito (vedi il pulsante
+# demo nella pagina Paziente): un valore fisso nel codice, non lasciato al
+# caso, perché deve rendere visibile lo scorrere del tempo fra un sollecito
+# e l'altro nella cronologia del caso.
+GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO = 2
+
+# La televisita proposta deve cadere DOPO che i 2 solleciti e l'eventuale
+# scalo a un operatore sarebbero comunque scattati (_NUMERO_MASSIMO_SOLLECITI
+# + 1 avanzamenti: il "+1" è il momento dello scalo stesso), con un giorno di
+# margine in più. Altrimenti la cronologia mostrerebbe un sollecito — o uno
+# scalo a operatore — per un appuntamento già passato, il che contraddirebbe
+# il racconto della demo (vedi anche il controllo di scadenza indipendente in
+# sollecita_appuntamento, che copre comunque il caso anche se questi valori
+# cambiassero in futuro).
+_GIORNI_PRIMA_TELEVISITA = (_NUMERO_MASSIMO_SOLLECITI + 1) * GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO + 1
 _ORARIO_TELEVISITA_SIMULATO = "10:00"
 _GIORNI_PRIMA_BIOPSIA = 7
 _ORARIO_BIOPSIA_SIMULATO = "09:00"
-_NUMERO_MASSIMO_SOLLECITI = 2
 _CENTRO_CONVENZIONATO_SIMULATO = "Centro Dermatologico Convenzionato (demo)"
 
 # A parità di data di apertura, i casi con priorità più alta vanno visti prima.
@@ -37,15 +66,24 @@ _ORDINE_PRIORITA = {"alta": 0, "media": 1, "bassa": 2}
 
 
 def ottieni_coda_dermatologo() -> list[dict]:
-    """Restituisce i casi in attesa di valutazione del dermatologo, ordinati per
-    priorità (alta, poi media, poi bassa) e, a parità di priorità, dal caso
-    aperto da più tempo al più recente."""
+    """Restituisce i casi in attesa di valutazione CLINICA del dermatologo,
+    ordinati per priorità (alta, poi media, poi bassa) e, a parità di
+    priorità, dal caso aperto da più tempo al più recente. Esclude i casi il
+    cui appuntamento è stato scalato a un operatore umano (vedi
+    ottieni_casi_scalati_a_operatore): quei casi non aspettano più una
+    valutazione clinica, aspettano una telefonata — devono comparire solo
+    nell'elenco separato, non anche qui, altrimenti il dermatologo non
+    capirebbe a colpo d'occhio che per quel caso non c'è nulla da valutare."""
     connessione = ottieni_connessione()
     try:
         righe = connessione.execute(
             """SELECT c.id, p.nome, c.priorita, c.data_apertura, c.qualita_foto_insufficiente
                FROM casi c JOIN pazienti p ON p.id = c.paziente_id
                WHERE c.stato = 'in_coda_dermatologo'
+                 AND NOT EXISTS (
+                     SELECT 1 FROM appuntamenti a
+                     WHERE a.caso_id = c.id AND a.tipo = 'televisita' AND a.stato = 'scalato_operatore'
+                 )
                ORDER BY c.data_apertura ASC, c.id ASC"""
         ).fetchall()
     finally:
@@ -64,6 +102,51 @@ def ottieni_coda_dermatologo() -> list[dict]:
     # Sort stabile: l'ordine per data_apertura dato dalla query SQL si conserva
     # a parità di priorità.
     casi.sort(key=lambda caso: _ORDINE_PRIORITA[caso["priorita"]])
+    return casi
+
+
+def ottieni_casi_scalati_a_operatore() -> list[dict]:
+    """Restituisce i casi il cui appuntamento di televisita è stato scalato a
+    un operatore umano (dopo 2 solleciti senza risposta, o perché la data
+    dell'appuntamento proposto è scaduta). Non richiedono una valutazione
+    clinica del dermatologo, ma una telefonata dell'operatore: il messaggio
+    già inviato al paziente lo promette esplicitamente, quindi deve comparire
+    da qualche parte nell'interfaccia di chi lavora — qui, separato dalla
+    coda ordinaria."""
+    connessione = ottieni_connessione()
+    try:
+        righe = connessione.execute(
+            """SELECT a.caso_id, p.nome, n.numero_solleciti
+               FROM appuntamenti a
+               JOIN casi c ON c.id = a.caso_id
+               JOIN pazienti p ON p.id = c.paziente_id
+               LEFT JOIN notifiche n ON n.caso_id = a.caso_id AND n.tipo = 'invito_televisita'
+               WHERE a.tipo = 'televisita' AND a.stato = 'scalato_operatore'
+               ORDER BY a.id DESC"""
+        ).fetchall()
+
+        casi = []
+        for caso_id, nome_paziente, numero_solleciti in righe:
+            riga_log = connessione.execute(
+                """SELECT motivo, data_ora FROM log_agenti
+                   WHERE caso_id = ? AND agente = ? AND decisione = 'Caso scalato a operatore umano'
+                   ORDER BY id DESC LIMIT 1""",
+                (caso_id, NOME_AGENTE),
+            ).fetchone()
+            motivo_escalation, data_ultima_azione = riga_log if riga_log is not None else (None, None)
+
+            casi.append(
+                {
+                    "caso_id": caso_id,
+                    "nome_paziente": nome_paziente,
+                    "numero_solleciti": numero_solleciti or 0,
+                    "motivo_escalation": motivo_escalation,
+                    "data_ultima_azione": data_ultima_azione,
+                }
+            )
+    finally:
+        connessione.close()
+
     return casi
 
 
@@ -129,7 +212,8 @@ def instrada_caso(caso_id: int) -> dict:
                 "gia_instradato": True,
             }
 
-        data_ora_proposta = f"{(date.today() + timedelta(days=_GIORNI_PRIMA_TELEVISITA)).isoformat()} {_ORARIO_TELEVISITA_SIMULATO}"
+        istante_simulato = tempo_simulato.ottieni_istante_simulato()
+        data_ora_proposta = f"{(istante_simulato.date() + timedelta(days=_GIORNI_PRIMA_TELEVISITA)).isoformat()} {_ORARIO_TELEVISITA_SIMULATO}"
         cursore = connessione.execute(
             """INSERT INTO appuntamenti (caso_id, tipo, data_ora, centro, stato)
                VALUES (?, 'televisita', ?, NULL, 'proposto')""",
@@ -144,7 +228,7 @@ def instrada_caso(caso_id: int) -> dict:
         cursore_notifica = connessione.execute(
             """INSERT INTO notifiche (caso_id, tipo, testo, data_invio, confermata, numero_solleciti)
                VALUES (?, 'invito_televisita', ?, ?, 0, 0)""",
-            (caso_id, testo_notifica, datetime.now().isoformat(timespec="seconds")),
+            (caso_id, testo_notifica, istante_simulato.isoformat(timespec="seconds")),
         )
         notifica_id = cursore_notifica.lastrowid
         connessione.commit()
@@ -160,6 +244,7 @@ def instrada_caso(caso_id: int) -> dict:
             "agenda simulata e inviata la notifica al paziente."
         ),
         caso_id=caso_id,
+        data_ora=istante_simulato.isoformat(timespec="seconds"),
     )
 
     return {
@@ -205,24 +290,30 @@ def conferma_appuntamento(appuntamento_id: int) -> dict:
         decisione="Televisita confermata dal paziente",
         motivo="Il paziente ha confermato la disponibilità proposta.",
         caso_id=caso_id,
+        data_ora=tempo_simulato.ottieni_istante_simulato().isoformat(timespec="seconds"),
     )
 
     return {"caso_id": caso_id, "appuntamento_id": appuntamento_id, "stato_appuntamento": "confermato"}
 
 
 def sollecita_appuntamento(appuntamento_id: int) -> dict:
-    """Simula il passare del tempo senza conferma da parte del paziente: invia
-    un sollecito, oppure — se erano già stati inviati 2 solleciti senza
-    risposta — scala l'appuntamento a un operatore umano. Non fa nulla se
-    l'appuntamento è già confermato o già scalato."""
+    """Simula il passare di GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO giorni senza
+    conferma da parte del paziente: fa avanzare la data simulata di quei
+    giorni e, di conseguenza, invia un sollecito oppure scala l'appuntamento a
+    un operatore umano — sia perché erano già stati inviati 2 solleciti senza
+    risposta, sia perché la data simulata ha raggiunto quella
+    dell'appuntamento proposto (scaduto: non avrebbe senso sollecitare ancora).
+    Non fa nulla (e non fa avanzare la data) se l'appuntamento è già
+    confermato o già scalato: in quel caso non c'è nessuna attesa da
+    simulare."""
     connessione = ottieni_connessione()
     try:
         riga = connessione.execute(
-            "SELECT caso_id, stato FROM appuntamenti WHERE id = ?", (appuntamento_id,)
+            "SELECT caso_id, stato, data_ora FROM appuntamenti WHERE id = ?", (appuntamento_id,)
         ).fetchone()
         if riga is None:
             raise ValueError(f"Nessun appuntamento trovato con id {appuntamento_id}")
-        caso_id, stato_appuntamento = riga
+        caso_id, stato_appuntamento, data_ora_appuntamento = riga
 
         if stato_appuntamento == "confermato":
             return {
@@ -248,23 +339,42 @@ def sollecita_appuntamento(appuntamento_id: int) -> dict:
             raise ValueError(f"Nessuna notifica di invito trovata per il caso {caso_id}.")
         notifica_id, numero_solleciti_attuale = riga_notifica
 
-        if numero_solleciti_attuale >= _NUMERO_MASSIMO_SOLLECITI:
+        tempo_simulato.avanza_data_simulata(GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO)
+        istante_simulato = tempo_simulato.ottieni_istante_simulato()
+
+        # data_ora_appuntamento è "AAAA-MM-GG HH:MM": basta la parte data per
+        # confrontarla con la data simulata (vedi il controllo indipendente
+        # descritto sopra e nella SOGLIA DI SOLLECITO in cima al file).
+        data_appuntamento = date.fromisoformat(data_ora_appuntamento.split(" ")[0])
+        appuntamento_scaduto = istante_simulato.date() >= data_appuntamento
+
+        if appuntamento_scaduto or numero_solleciti_attuale >= _NUMERO_MASSIMO_SOLLECITI:
             connessione.execute("UPDATE appuntamenti SET stato = 'scalato_operatore' WHERE id = ?", (appuntamento_id,))
             connessione.commit()
             azione = "scalato_operatore"
-            motivo = (
-                f"Il paziente non ha confermato dopo {_NUMERO_MASSIMO_SOLLECITI} solleciti: "
-                "il caso è stato scalato a un operatore umano."
-            )
+            if appuntamento_scaduto:
+                motivo = (
+                    f"La data dell'appuntamento proposto ({data_ora_appuntamento}) è stata raggiunta senza "
+                    "conferma: il caso è stato scalato a un operatore umano."
+                )
+            else:
+                motivo = (
+                    f"Sono passati {GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO} giorni simulati e il paziente "
+                    f"non ha confermato dopo {_NUMERO_MASSIMO_SOLLECITI} solleciti: il caso è stato scalato "
+                    "a un operatore umano."
+                )
         else:
             nuovo_numero = numero_solleciti_attuale + 1
             connessione.execute(
                 "UPDATE notifiche SET numero_solleciti = ?, data_invio = ? WHERE id = ?",
-                (nuovo_numero, datetime.now().isoformat(timespec="seconds"), notifica_id),
+                (nuovo_numero, istante_simulato.isoformat(timespec="seconds"), notifica_id),
             )
             connessione.commit()
             azione = "sollecito_inviato"
-            motivo = f"Inviato il sollecito numero {nuovo_numero} di {_NUMERO_MASSIMO_SOLLECITI}: il paziente non ha ancora confermato."
+            motivo = (
+                f"Sono passati {GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO} giorni simulati senza risposta: "
+                f"inviato il sollecito numero {nuovo_numero} di {_NUMERO_MASSIMO_SOLLECITI}."
+            )
     finally:
         connessione.close()
 
@@ -274,6 +384,7 @@ def sollecita_appuntamento(appuntamento_id: int) -> dict:
         decisione="Sollecito inviato" if azione == "sollecito_inviato" else "Caso scalato a operatore umano",
         motivo=motivo,
         caso_id=caso_id,
+        data_ora=istante_simulato.isoformat(timespec="seconds"),
     )
 
     return {"caso_id": caso_id, "appuntamento_id": appuntamento_id, "azione": azione, "motivo": motivo}
@@ -290,7 +401,8 @@ def prenota_biopsia(caso_id: int) -> dict:
         if riga_caso is None:
             raise ValueError(f"Nessun caso trovato con id {caso_id}")
 
-        data_ora_proposta = f"{(date.today() + timedelta(days=_GIORNI_PRIMA_BIOPSIA)).isoformat()} {_ORARIO_BIOPSIA_SIMULATO}"
+        istante_simulato = tempo_simulato.ottieni_istante_simulato()
+        data_ora_proposta = f"{(istante_simulato.date() + timedelta(days=_GIORNI_PRIMA_BIOPSIA)).isoformat()} {_ORARIO_BIOPSIA_SIMULATO}"
         cursore = connessione.execute(
             """INSERT INTO appuntamenti (caso_id, tipo, data_ora, centro, stato)
                VALUES (?, 'biopsia', ?, ?, 'proposto')""",
@@ -305,7 +417,7 @@ def prenota_biopsia(caso_id: int) -> dict:
         connessione.execute(
             """INSERT INTO notifiche (caso_id, tipo, testo, data_invio, confermata, numero_solleciti)
                VALUES (?, 'invito_biopsia', ?, ?, 0, 0)""",
-            (caso_id, testo_notifica, datetime.now().isoformat(timespec="seconds")),
+            (caso_id, testo_notifica, istante_simulato.isoformat(timespec="seconds")),
         )
         connessione.commit()
     finally:
@@ -320,6 +432,7 @@ def prenota_biopsia(caso_id: int) -> dict:
             "decisione clinica del dermatologo (non presa da questo agente)."
         ),
         caso_id=caso_id,
+        data_ora=istante_simulato.isoformat(timespec="seconds"),
     )
 
     return {

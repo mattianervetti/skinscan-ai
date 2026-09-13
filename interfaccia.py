@@ -9,6 +9,7 @@ import streamlit as st
 
 from nucleo.database import resetta_database
 from nucleo.modello_linguistico import modello_disattivato
+from nucleo.tempo_simulato import ottieni_data_simulata
 
 # Testo del disclaimer obbligatorio (vedi CLAUDE.md, sezione 3): deve comparire
 # in modo visibile su ogni schermata dell'app, senza eccezioni.
@@ -26,9 +27,11 @@ def mostra_barra_laterale(fase_corrente: str) -> None:
     with st.sidebar:
         st.caption(f"Fase di sviluppo attuale: {fase_corrente}")
 
+        st.caption(f"📅 Data simulata (demo): {ottieni_data_simulata().strftime('%d/%m/%Y')}")
+
         if st.button("Reimposta demo"):
             resetta_database()
-            st.success("Demo reimpostata: dati ripristinati ai 4 pazienti iniziali.")
+            st.success("Demo reimpostata: dati ripristinati ai 4 pazienti iniziali (data simulata inclusa).")
 
         if modello_disattivato():
             st.warning(

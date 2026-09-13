@@ -16,14 +16,21 @@ def registra_azione(
     decisione: str,
     motivo: str,
     caso_id: int | None = None,
+    data_ora: str | None = None,
 ) -> None:
-    """Scrive una riga nel registro delle azioni, con data e ora correnti."""
+    """Scrive una riga nel registro delle azioni. Usa data e ora correnti se
+    data_ora non è specificato (comportamento di sempre per la maggior parte
+    degli agenti). L'agente INSTRADAMENTO passa invece esplicitamente la sua
+    data simulata (vedi nucleo/tempo_simulato.py), per una cronologia coerente
+    durante la demo: gli altri agenti non se ne accorgono, il parametro è
+    facoltativo."""
+    momento = data_ora if data_ora is not None else datetime.now().isoformat(timespec="seconds")
     connessione = ottieni_connessione()
     try:
         connessione.execute(
             """INSERT INTO log_agenti (caso_id, agente, input, decisione, motivo, data_ora)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (caso_id, agente, input_dati, decisione, motivo, datetime.now().isoformat(timespec="seconds")),
+            (caso_id, agente, input_dati, decisione, motivo, momento),
         )
         connessione.commit()
     finally:

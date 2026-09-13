@@ -20,7 +20,7 @@ PERCORSO_DATABASE = _CARTELLA_PROGETTO / "data" / "skinscan.db"
 # La versione è registrata nel database stesso (PRAGMA user_version, un intero
 # integrato in SQLite pensato apposta per questo). Vedi inizializza_database()
 # per cosa succede quando non coincide.
-VERSIONE_SCHEMA = 1
+VERSIONE_SCHEMA = 2
 
 
 def ottieni_connessione() -> sqlite3.Connection:
@@ -170,11 +170,21 @@ CREATE TABLE IF NOT EXISTS controlli_periodici (
     note TEXT,
     stato TEXT NOT NULL DEFAULT 'programmato'
 );
+
+-- Riga singola con la "data di oggi" simulata (vedi nucleo/tempo_simulato.py):
+-- usata SOLO dall'agente INSTRADAMENTO, per far avanzare il tempo durante una
+-- demo dal vivo senza aspettare giorni veri. Inizializzata alla data reale
+-- quando i dati demo vengono popolati, riportata alla data reale dal reset.
+CREATE TABLE IF NOT EXISTS stato_demo (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    data_simulata TEXT NOT NULL
+);
 """
 
 # Ordine di cancellazione per il reset: le tabelle "figlie" prima delle "madri",
 # per rispettare i riferimenti (foreign key) tra tabelle.
 _TABELLE_IN_ORDINE_DI_CANCELLAZIONE = [
+    "stato_demo",
     "esiti_istologici",
     "appuntamenti",
     "notifiche",
@@ -279,9 +289,10 @@ def inizializza_database() -> None:
     reali servirebbero invece migrazioni che preservano il contenuto esistente
     (ALTER TABLE, copia dei dati, ecc.), non una cancellazione.
     """
-    # Importato qui (non in cima al file) per mantenere questo modulo indipendente
+    # Importati qui (non in cima al file) per mantenere questo modulo indipendente
     # dai dati specifici della demo, che potranno cambiare senza toccare database.py.
     from nucleo.dati_demo import popola_dati_demo
+    from nucleo.tempo_simulato import inizializza_data_simulata
 
     connessione = ottieni_connessione()
     try:
@@ -296,6 +307,7 @@ def inizializza_database() -> None:
         try:
             crea_tabelle(connessione)
             popola_dati_demo(connessione)
+            inizializza_data_simulata(connessione)
             _registra_versione_schema(connessione, VERSIONE_SCHEMA)
             connessione.commit()
         finally:
@@ -307,14 +319,18 @@ def inizializza_database() -> None:
         crea_tabelle(connessione)
         if not _database_ha_dati(connessione):
             popola_dati_demo(connessione)
+            inizializza_data_simulata(connessione)
+            connessione.commit()
     finally:
         connessione.close()
 
 
 def resetta_database() -> None:
     """Cancella tutti i dati e ricarica da zero i pazienti demo nella situazione
-    di partenza. Utile per rifare la demo dal vivo senza riavviare l'applicazione."""
+    di partenza (compresa la data simulata, riportata alla data reale). Utile
+    per rifare la demo dal vivo senza riavviare l'applicazione."""
     from nucleo.dati_demo import popola_dati_demo
+    from nucleo.tempo_simulato import inizializza_data_simulata
 
     connessione = ottieni_connessione()
     try:
@@ -333,6 +349,7 @@ def resetta_database() -> None:
 
         connessione.commit()
         popola_dati_demo(connessione)
+        inizializza_data_simulata(connessione)
         _registra_versione_schema(connessione, VERSIONE_SCHEMA)
         connessione.commit()
     finally:

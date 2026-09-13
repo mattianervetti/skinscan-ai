@@ -6,7 +6,13 @@ import streamlit as st
 from agenti.accoglienza import rigenera_testo_paziente, valuta_questionario
 from agenti.analisi import analizza_caso
 from agenti.guida_foto import ISTRUZIONI_PRE_SCATTO, TENTATIVI_MASSIMI, conta_tentativi, valuta_foto
-from agenti.instradamento import conferma_appuntamento, instrada_caso, ottieni_stato_instradamento, sollecita_appuntamento
+from agenti.instradamento import (
+    GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO,
+    conferma_appuntamento,
+    instrada_caso,
+    ottieni_stato_instradamento,
+    sollecita_appuntamento,
+)
 from nucleo.database import crea_paziente_con_questionario, ottieni_connessione
 
 _STATO_AVANZAMENTO_LEGGIBILE = {
@@ -166,11 +172,12 @@ def _mostra_sezione_instradamento(caso_id: int) -> None:
                 st.rerun()
         with colonna_simula:
             if st.button(
-                "⏱️ Simula: nessuna risposta (demo)",
+                f"⏱️ Simula: sono passati {GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO} giorni senza risposta",
                 key=f"sollecito_{caso_id}",
                 help=(
-                    "Solo per la demo: simula il passare del tempo senza conferma del "
-                    "paziente, per mostrare i solleciti e l'eventuale scalo a un operatore."
+                    "Solo per la demo: fa avanzare la data simulata del progetto di "
+                    f"{GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO} giorni, per mostrare i "
+                    "solleciti e l'eventuale scalo a un operatore con date coerenti."
                 ),
             ):
                 sollecita_appuntamento(info["appuntamento_id"])
