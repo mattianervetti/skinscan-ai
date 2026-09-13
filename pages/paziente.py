@@ -6,6 +6,7 @@ import streamlit as st
 from agenti.accoglienza import rigenera_testo_paziente, valuta_questionario
 from agenti.analisi import analizza_caso
 from agenti.guida_foto import ISTRUZIONI_PRE_SCATTO, TENTATIVI_MASSIMI, conta_tentativi, valuta_foto
+from agenti.instradamento import conferma_appuntamento, instrada_caso, ottieni_stato_instradamento, sollecita_appuntamento
 from nucleo.database import crea_paziente_con_questionario, ottieni_connessione
 
 _STATO_AVANZAMENTO_LEGGIBILE = {
@@ -139,6 +140,43 @@ def _mostra_esito_analisi(esito_analisi: dict) -> None:
         )
 
 
+def _mostra_sezione_instradamento(caso_id: int) -> None:
+    info = ottieni_stato_instradamento(caso_id)
+    if info is None:
+        return
+
+    st.subheader("Televisita")
+
+    if info["stato_appuntamento"] == "confermato":
+        st.success(f"Televisita confermata per il {info['data_ora']}.")
+    elif info["stato_appuntamento"] == "scalato_operatore":
+        st.warning(
+            "Non abbiamo ricevuto conferma dopo i solleciti: un operatore la contatterà "
+            "direttamente per fissare la televisita."
+        )
+    else:
+        st.write(f"Proposta di televisita per il {info['data_ora']}.")
+        if info["numero_solleciti"] > 0:
+            st.caption(f"Solleciti inviati finora: {info['numero_solleciti']}.")
+
+        colonna_conferma, colonna_simula = st.columns(2)
+        with colonna_conferma:
+            if st.button("✅ Conferma disponibilità", key=f"conferma_{caso_id}"):
+                conferma_appuntamento(info["appuntamento_id"])
+                st.rerun()
+        with colonna_simula:
+            if st.button(
+                "⏱️ Simula: nessuna risposta (demo)",
+                key=f"sollecito_{caso_id}",
+                help=(
+                    "Solo per la demo: simula il passare del tempo senza conferma del "
+                    "paziente, per mostrare i solleciti e l'eventuale scalo a un operatore."
+                ),
+            ):
+                sollecita_appuntamento(info["appuntamento_id"])
+                st.rerun()
+
+
 def _mostra_sezione_foto(caso_id: int) -> None:
     st.subheader("Acquisizione foto")
 
@@ -153,6 +191,9 @@ def _mostra_sezione_foto(caso_id: int) -> None:
             if esito_analisi is not None:
                 st.divider()
                 _mostra_esito_analisi(esito_analisi)
+                if esito_analisi["destinato_dermatologo"]:
+                    st.divider()
+                    _mostra_sezione_instradamento(caso_id)
             return
         st.divider()
 
@@ -193,6 +234,8 @@ def _mostra_sezione_foto(caso_id: int) -> None:
                 with st.spinner("Elaborazione delle immagini in corso..."):
                     esito_analisi = analizza_caso(caso_id)
                 st.session_state.setdefault("esiti_analisi", {})[caso_id] = esito_analisi
+                if esito_analisi["destinato_dermatologo"]:
+                    instrada_caso(caso_id)
 
             st.rerun()
 
