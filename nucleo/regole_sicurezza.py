@@ -141,6 +141,44 @@ def decidi_percorso(priorita: str, neo_cambiato: bool) -> dict:
     raise ValueError(f"priorita non valida: {priorita!r} (attesi 'bassa', 'media', 'alta')")
 
 
+GIORNI_CONTROLLO_BREVE = 90
+GIORNI_CONTROLLO_MEDIO = 180
+GIORNI_CONTROLLO_LUNGO = 365
+
+
+def decidi_intervallo_controllo(*, priorita: str, classificazione_istologica: str | None) -> dict:
+    """Decide fra quanti giorni programmare il prossimo controllo di
+    prevenzione, in base all'esito istologico (se c'è stata una biopsia) e
+    alla priorità costituzionale del caso.
+
+    Regola (soglie di esempio, facilmente cambiabili):
+    - esito istologico maligno → intervallo BREVE, indipendentemente dalla priorità
+      (una lesione maligna già trovata richiede un controllo ravvicinato);
+    - nessun esito maligno (o nessuna biopsia) e priorità ALTA → intervallo MEDIO;
+    - altrimenti (priorità media o bassa) → intervallo LUNGO.
+
+    Restituisce {"giorni": int, "motivo": str}.
+    """
+    from nucleo.registro_audit import is_istologico_maligno
+
+    if classificazione_istologica is not None and is_istologico_maligno(classificazione_istologica):
+        return {
+            "giorni": GIORNI_CONTROLLO_BREVE,
+            "motivo": f"Esito istologico maligno ({classificazione_istologica.replace('_', ' ')}): controllo ravvicinato.",
+        }
+
+    if priorita == "alta":
+        return {
+            "giorni": GIORNI_CONTROLLO_MEDIO,
+            "motivo": "Nessun esito maligno, ma rischio costituzionale ALTO: controllo a intervallo medio.",
+        }
+
+    return {
+        "giorni": GIORNI_CONTROLLO_LUNGO,
+        "motivo": "Nessun esito maligno e rischio costituzionale non alto: controllo di routine a intervallo lungo.",
+    }
+
+
 def decidi_destinazione_dopo_analisi(*, gia_destinato_dermatologo: bool, classificazione: str) -> dict:
     """Applica la regola di sicurezza dell'agente ANALISI: un esito sospetto o
     non conclusivo manda SEMPRE al dermatologo, anche se il caso non lo era già.

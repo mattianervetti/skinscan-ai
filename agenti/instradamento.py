@@ -73,7 +73,10 @@ def ottieni_coda_dermatologo() -> list[dict]:
     ottieni_casi_scalati_a_operatore): quei casi non aspettano più una
     valutazione clinica, aspettano una telefonata — devono comparire solo
     nell'elenco separato, non anche qui, altrimenti il dermatologo non
-    capirebbe a colpo d'occhio che per quel caso non c'è nulla da valutare."""
+    capirebbe a colpo d'occhio che per quel caso non c'è nulla da valutare.
+    Esclude anche i casi per cui è già stata richiesta una biopsia (in attesa
+    di esito istologico, o già chiusi con un esito — vedi agenti/followup.py):
+    aspettano un referto di laboratorio, non una nuova valutazione clinica."""
     connessione = ottieni_connessione()
     try:
         righe = connessione.execute(
@@ -83,6 +86,10 @@ def ottieni_coda_dermatologo() -> list[dict]:
                  AND NOT EXISTS (
                      SELECT 1 FROM appuntamenti a
                      WHERE a.caso_id = c.id AND a.tipo = 'televisita' AND a.stato = 'scalato_operatore'
+                 )
+                 AND NOT EXISTS (
+                     SELECT 1 FROM appuntamenti a
+                     WHERE a.caso_id = c.id AND a.tipo = 'biopsia'
                  )
                ORDER BY c.data_apertura ASC, c.id ASC"""
         ).fetchall()
@@ -394,12 +401,31 @@ def prenota_biopsia(caso_id: int) -> dict:
     """Prenota una biopsia presso il centro convenzionato simulato. Da chiamare
     SOLO dopo che il dermatologo ha deciso che serve una biopsia: questa
     decisione clinica non è mai presa da questo agente (vedi CLAUDE.md, sezioni
-    3 e 6)."""
+    3 e 6) — la decide sempre il dermatologo dalla pagina Dermatologo.
+    Idempotente come instrada_caso: se il caso ha già una biopsia prenotata,
+    non ne crea una seconda (rilevante ora che è raggiungibile da un pulsante
+    dell'interfaccia, dove un doppio clic o un rerun di Streamlit non deve
+    produrre due prenotazioni)."""
     connessione = ottieni_connessione()
     try:
         riga_caso = connessione.execute("SELECT id FROM casi WHERE id = ?", (caso_id,)).fetchone()
         if riga_caso is None:
             raise ValueError(f"Nessun caso trovato con id {caso_id}")
+
+        appuntamento_esistente = connessione.execute(
+            """SELECT id, data_ora, centro FROM appuntamenti
+               WHERE caso_id = ? AND tipo = 'biopsia' ORDER BY id DESC LIMIT 1""",
+            (caso_id,),
+        ).fetchone()
+        if appuntamento_esistente is not None:
+            appuntamento_id, data_ora_esistente, centro_esistente = appuntamento_esistente
+            return {
+                "caso_id": caso_id,
+                "appuntamento_id": appuntamento_id,
+                "data_ora": data_ora_esistente,
+                "centro": centro_esistente,
+                "gia_prenotata": True,
+            }
 
         istante_simulato = tempo_simulato.ottieni_istante_simulato()
         data_ora_proposta = f"{(istante_simulato.date() + timedelta(days=_GIORNI_PRIMA_BIOPSIA)).isoformat()} {_ORARIO_BIOPSIA_SIMULATO}"
@@ -440,4 +466,5 @@ def prenota_biopsia(caso_id: int) -> dict:
         "appuntamento_id": appuntamento_id,
         "data_ora": data_ora_proposta,
         "centro": _CENTRO_CONVENZIONATO_SIMULATO,
+        "gia_prenotata": False,
     }

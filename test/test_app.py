@@ -29,11 +29,15 @@ def test_database_inizializzato_dopo_avvio_app():
 
     connessione = ottieni_connessione()
     try:
-        numero_pazienti = connessione.execute("SELECT COUNT(*) FROM pazienti").fetchone()[0]
+        # Conta solo i 4 pazienti demo con cui si interagisce: il totale include
+        # anche i ~30 casi storici fittizi per il registro di audit (nucleo/dati_demo.py).
+        numero_pazienti_demo = connessione.execute(
+            "SELECT COUNT(*) FROM pazienti WHERE nome IN ('Marta', 'Luca', 'Paolo', 'Giulia')"
+        ).fetchone()[0]
     finally:
         connessione.close()
 
-    assert numero_pazienti == 4
+    assert numero_pazienti_demo == 4
 
 
 if __name__ == "__main__":

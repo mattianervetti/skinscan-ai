@@ -16,8 +16,18 @@ from nucleo.database import PERCORSO_DATABASE, inizializza_database, ottieni_con
 from nucleo.dati_demo import genera_immagini_demo
 
 
+_NOMI_PAZIENTI_DEMO = ("Marta", "Luca", "Paolo", "Giulia")
+
+
 def _pazienti_come_dizionario(connessione):
-    cursore = connessione.execute("SELECT nome, eta, fototipo FROM pazienti ORDER BY nome")
+    # Solo i 4 pazienti demo con cui si interagisce: il database contiene anche
+    # ~30 casi storici fittizi per il registro di audit (nucleo/dati_demo.py),
+    # che non sono "pazienti demo" in questo senso.
+    segnaposto = ",".join("?" * len(_NOMI_PAZIENTI_DEMO))
+    cursore = connessione.execute(
+        f"SELECT nome, eta, fototipo FROM pazienti WHERE nome IN ({segnaposto}) ORDER BY nome",
+        _NOMI_PAZIENTI_DEMO,
+    )
     return {nome: {"eta": eta, "fototipo": fototipo} for nome, eta, fototipo in cursore.fetchall()}
 
 
@@ -33,7 +43,7 @@ def test_database_si_crea_da_zero_con_i_quattro_pazienti():
     finally:
         connessione.close()
 
-    assert set(pazienti.keys()) == {"Marta", "Luca", "Paolo", "Giulia"}
+    assert set(pazienti.keys()) == set(_NOMI_PAZIENTI_DEMO)
     assert pazienti["Marta"]["eta"] == 34
     assert pazienti["Luca"]["fototipo"] == 4
 
@@ -73,12 +83,17 @@ def test_reset_riporta_alla_situazione_di_partenza():
     connessione = ottieni_connessione()
     try:
         eta_marta = connessione.execute("SELECT eta FROM pazienti WHERE nome = 'Marta'").fetchone()[0]
-        numero_pazienti = connessione.execute("SELECT COUNT(*) FROM pazienti").fetchone()[0]
+        # Conta solo i 4 pazienti demo con cui si interagisce: il totale include
+        # anche i ~30 casi storici fittizi generati per il registro di audit
+        # (nucleo/dati_demo.py), che non sono "pazienti demo" in questo senso.
+        numero_pazienti_demo = connessione.execute(
+            "SELECT COUNT(*) FROM pazienti WHERE nome IN ('Marta', 'Luca', 'Paolo', 'Giulia')"
+        ).fetchone()[0]
     finally:
         connessione.close()
 
     assert eta_marta == 34
-    assert numero_pazienti == 4
+    assert numero_pazienti_demo == 4
 
 
 def test_immagini_demo_esistono_e_sono_leggibili():

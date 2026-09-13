@@ -14,8 +14,9 @@ from pages.home import mostra_pagina as pagina_home
 from pages.paziente import mostra_pagina as pagina_paziente
 from pages.dermatologo import mostra_pagina as pagina_dermatologo
 from pages.log_agenti import mostra_pagina as pagina_log_agenti
+from pages.registro_audit import mostra_pagina as pagina_registro_audit
 
-FASE_SVILUPPO_CORRENTE = "Fase 1 — scheletro dell'app (pagine segnaposto, nessuna funzionalità)"
+FASE_SVILUPPO_CORRENTE = "Fase 2 completata — tutti e 5 gli agenti (Accoglienza, Guida alla foto, Analisi, Instradamento, Follow-up)"
 
 st.set_page_config(page_title="SkinScan AI")
 
@@ -40,6 +41,7 @@ pagina_selezionata = st.navigation(
         st.Page(pagina_paziente, title="Paziente", url_path="paziente"),
         st.Page(pagina_dermatologo, title="Dermatologo", url_path="dermatologo"),
         st.Page(pagina_log_agenti, title="Log agenti", url_path="log-agenti"),
+        st.Page(pagina_registro_audit, title="Registro di Audit", url_path="registro-audit"),
     ]
 )
 

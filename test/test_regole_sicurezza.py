@@ -8,7 +8,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nucleo.regole_sicurezza import calcola_punteggio_rischio_costituzionale, decidi_percorso
+from nucleo.regole_sicurezza import (
+    GIORNI_CONTROLLO_BREVE,
+    GIORNI_CONTROLLO_LUNGO,
+    GIORNI_CONTROLLO_MEDIO,
+    calcola_punteggio_rischio_costituzionale,
+    decidi_intervallo_controllo,
+    decidi_percorso,
+)
 
 
 def _rischio(**kwargs) -> dict:
@@ -97,6 +104,27 @@ def test_rischio_alto_senza_sintomi_va_comunque_al_dermatologo():
     assert esito_percorso["destinato_dermatologo"] is True
 
 
+def test_intervallo_controllo_esito_maligno_e_sempre_breve():
+    # Anche con priorità bassa: un esito maligno già trovato vale più della priorità costituzionale.
+    esito = decidi_intervallo_controllo(priorita="bassa", classificazione_istologica="melanoma_invasivo")
+    assert esito["giorni"] == GIORNI_CONTROLLO_BREVE
+
+
+def test_intervallo_controllo_priorita_alta_senza_esito_maligno_e_medio():
+    esito = decidi_intervallo_controllo(priorita="alta", classificazione_istologica="benigno")
+    assert esito["giorni"] == GIORNI_CONTROLLO_MEDIO
+
+
+def test_intervallo_controllo_priorita_alta_senza_biopsia_e_medio():
+    esito = decidi_intervallo_controllo(priorita="alta", classificazione_istologica=None)
+    assert esito["giorni"] == GIORNI_CONTROLLO_MEDIO
+
+
+def test_intervallo_controllo_priorita_bassa_o_media_senza_esito_maligno_e_lungo():
+    assert decidi_intervallo_controllo(priorita="bassa", classificazione_istologica="benigno")["giorni"] == GIORNI_CONTROLLO_LUNGO
+    assert decidi_intervallo_controllo(priorita="media", classificazione_istologica=None)["giorni"] == GIORNI_CONTROLLO_LUNGO
+
+
 if __name__ == "__main__":
     test_marta_rischio_alto()
     test_luca_rischio_basso()
@@ -110,4 +138,8 @@ if __name__ == "__main__":
     test_rischio_basso_senza_sintomi_e_prevenzione()
     test_rischio_medio_senza_sintomi_richiede_foto_ma_non_dermatologo()
     test_rischio_alto_senza_sintomi_va_comunque_al_dermatologo()
+    test_intervallo_controllo_esito_maligno_e_sempre_breve()
+    test_intervallo_controllo_priorita_alta_senza_esito_maligno_e_medio()
+    test_intervallo_controllo_priorita_alta_senza_biopsia_e_medio()
+    test_intervallo_controllo_priorita_bassa_o_media_senza_esito_maligno_e_lungo()
     print("TEST SUPERATO")

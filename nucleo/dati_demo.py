@@ -11,11 +11,20 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
+from nucleo.classificatore import AVVISO_SIMULAZIONE
+from nucleo.registro_audit import categorizza_confronto
+
 _CARTELLA_PROGETTO = Path(__file__).resolve().parent.parent
 CARTELLA_IMMAGINI_DEMO = _CARTELLA_PROGETTO / "data" / "demo" / "immagini"
 
 _DATA_CREAZIONE = "2026-09-01"
 _DATA_COMPILAZIONE_QUESTIONARIO = "2026-09-01"
+_DATA_CASI_STORICI = "2025-06-01"
+
+# Seed fisso: i ~30 casi storici per il registro di audit devono essere
+# riproducibili (stessa distribuzione a ogni avvio/reset), mai casuali in
+# senso non riproducibile — stesso principio del classificatore simulato.
+_SEED_CASI_STORICI = 20260913
 
 # Dati anagrafici e questionario dei 4 pazienti demo, coerenti con il livello di
 # rischio che dovranno produrre quando l'agente ACCOGLIENZA (Fase 2) li elaborerà.
@@ -191,6 +200,139 @@ def _crea_foto(
     return cursore.lastrowid
 
 
+def _costruisci_casi_storici_audit() -> list[dict]:
+    """Costruisce (senza toccare il database) la distribuzione dei ~30 casi
+    storici fittizi per il registro di audit: prevalenza di concordanze,
+    alcuni falsi positivi, pochissimi falsi negativi, e due casi recuperati da
+    una regola di sicurezza (uno per il neo cambiato, uno per il rischio
+    alto — le due regole descritte in nucleo/regole_sicurezza.py).
+
+    priorita e neo_cambiato sono scelti direttamente qui (non calcolati da un
+    questionario fittizio), come già per i 4 pazienti demo in _PAZIENTI_DEMO:
+    sono gli unici due campi che contano per il registro di audit."""
+    generatore = random.Random(_SEED_CASI_STORICI)
+    maligni = ["melanoma_in_situ", "melanoma_invasivo", "altra_lesione_maligna"]
+    casi = []
+
+    # Concordanza (18): 8 "sospetta" confermate maligne, 10 "probabilmente
+    # benigna" confermate benigne.
+    for _ in range(8):
+        casi.append({
+            "classificazione_algoritmo": "sospetta",
+            "classificazione_istologica": generatore.choice(maligni),
+            "priorita": generatore.choice(["media", "alta"]),
+            "neo_cambiato": 0,
+        })
+    for _ in range(10):
+        casi.append({
+            "classificazione_algoritmo": "probabilmente_benigna",
+            "classificazione_istologica": "benigno",
+            "priorita": generatore.choice(["bassa", "media"]),
+            "neo_cambiato": 0,
+        })
+
+    # Falso positivo (5): "sospetta" ma benigno all'istologico.
+    for _ in range(5):
+        casi.append({
+            "classificazione_algoritmo": "sospetta",
+            "classificazione_istologica": "benigno",
+            "priorita": generatore.choice(["media", "alta"]),
+            "neo_cambiato": 0,
+        })
+
+    # Falso negativo (2, pochissimi): "probabilmente benigna" ma maligno
+    # all'istologico, SENZA nessun'altra regola di sicurezza attiva — i casi
+    # che il classificatore da solo avrebbe perso davvero.
+    for _ in range(2):
+        casi.append({
+            "classificazione_algoritmo": "probabilmente_benigna",
+            "classificazione_istologica": generatore.choice(maligni),
+            "priorita": generatore.choice(["bassa", "media"]),
+            "neo_cambiato": 0,
+        })
+
+    # Non conclusivi (3): il classificatore non si era espresso.
+    for classificazione_istologica in ("benigno", generatore.choice(maligni), "benigno"):
+        casi.append({
+            "classificazione_algoritmo": "non_conclusiva",
+            "classificazione_istologica": classificazione_istologica,
+            "priorita": generatore.choice(["bassa", "media", "alta"]),
+            "neo_cambiato": 0,
+        })
+
+    # Recuperati da una regola di sicurezza (2): "probabilmente benigna" ma
+    # maligno all'istologico, MA il caso è comunque andato al dermatologo —
+    # uno per il neo dichiarato cambiato, uno per il rischio costituzionale alto.
+    casi.append({
+        "classificazione_algoritmo": "probabilmente_benigna",
+        "classificazione_istologica": generatore.choice(maligni),
+        "priorita": "media",
+        "neo_cambiato": 1,
+    })
+    casi.append({
+        "classificazione_algoritmo": "probabilmente_benigna",
+        "classificazione_istologica": generatore.choice(maligni),
+        "priorita": "alta",
+        "neo_cambiato": 0,
+    })
+
+    generatore.shuffle(casi)
+    return casi
+
+
+def _genera_casi_storici_audit(connessione: sqlite3.Connection, percorso_immagine_segnaposto: Path) -> None:
+    """Inserisce i ~30 casi storici già chiusi (pazienti fittizi anonimi —
+    "Caso storico NN", mai un nome proprio, per non confonderli con i 4
+    pazienti demo con cui si interagisce) con esito istologico e
+    classificazione già caricati, così la pagina di Registro di Audit mostra
+    numeri leggibili invece di un solo caso. Riusa UNA foto demo già
+    esistente come segnaposto: questi casi non vengono mai mostrati come foto
+    in nessuna pagina, generarne 30 nuove sarebbe inutile."""
+    for indice, caso in enumerate(_costruisci_casi_storici_audit(), start=1):
+        cursore = connessione.execute(
+            "INSERT INTO pazienti (nome, eta, fototipo, data_creazione) VALUES (?, ?, ?, ?)",
+            (f"Caso storico {indice:02d}", 45, 2, _DATA_CASI_STORICI),
+        )
+        id_paziente = cursore.lastrowid
+
+        connessione.execute(
+            """INSERT INTO questionari
+               (paziente_id, data_compilazione, fototipo, categoria_nei,
+                familiarita_melanoma, melanoma_pregresso, immunosoppressione, neo_cambiato)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (id_paziente, _DATA_CASI_STORICI, 2, "20-50", 0, 0, 0, caso["neo_cambiato"]),
+        )
+
+        id_lesione = _crea_lesione(connessione, id_paziente, "Lesione (caso storico)")
+        id_foto = _crea_foto(connessione, id_lesione, percorso_immagine_segnaposto, _DATA_CASI_STORICI, qualita_ok=1)
+
+        cursore_caso = connessione.execute(
+            """INSERT INTO casi (paziente_id, lesione_id, priorita, stato, data_apertura)
+               VALUES (?, ?, ?, 'chiuso_con_esito', ?)""",
+            (id_paziente, id_lesione, caso["priorita"], _DATA_CASI_STORICI),
+        )
+        id_caso = cursore_caso.lastrowid
+
+        connessione.execute(
+            """INSERT INTO analisi_classificatore
+               (foto_id, esito, confidenza, caratteristiche, confronto_storico, avviso_simulazione, data_analisi)
+               VALUES (?, ?, ?, NULL, NULL, ?, ?)""",
+            (id_foto, caso["classificazione_algoritmo"], 0.75, AVVISO_SIMULAZIONE, _DATA_CASI_STORICI),
+        )
+
+        gia_destinato = bool(caso["neo_cambiato"]) or caso["priorita"] == "alta"
+        categoria = categorizza_confronto(
+            classificazione_algoritmo=caso["classificazione_algoritmo"],
+            classificazione_istologica=caso["classificazione_istologica"],
+            gia_destinato_indipendentemente_dal_classificatore=gia_destinato,
+        )
+        connessione.execute(
+            """INSERT INTO esiti_istologici (caso_id, classificazione, categoria_confronto, data_caricamento)
+               VALUES (?, ?, ?, ?)""",
+            (id_caso, caso["classificazione_istologica"], categoria, _DATA_CASI_STORICI),
+        )
+
+
 def popola_dati_demo(connessione: sqlite3.Connection) -> None:
     """Inserisce i 4 pazienti demo con i loro questionari, le lesioni monitorate
     e le foto associate. Genera anche le immagini sintetiche se non esistono già."""
@@ -240,5 +382,8 @@ def popola_dati_demo(connessione: sqlite3.Connection) -> None:
     _crea_foto(connessione, id_lesione_paolo, percorsi_immagini["paolo_nitida"], "2026-09-01", qualita_ok=1)
 
     # Luca: nessuna lesione monitorata, coerente con "nessun sintomo, solo prevenzione".
+
+    # ~30 casi storici già chiusi, solo per il registro di audit (vedi sopra).
+    _genera_casi_storici_audit(connessione, percorsi_immagini["giulia_nitida"])
 
     connessione.commit()

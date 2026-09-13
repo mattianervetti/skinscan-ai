@@ -5,6 +5,7 @@ import streamlit as st
 
 from agenti.accoglienza import rigenera_testo_paziente, valuta_questionario
 from agenti.analisi import analizza_caso
+from agenti.followup import ottieni_controlli_periodici, ottieni_stato_biopsia
 from agenti.guida_foto import ISTRUZIONI_PRE_SCATTO, TENTATIVI_MASSIMI, conta_tentativi, valuta_foto
 from agenti.instradamento import (
     GIORNI_AVANZAMENTO_PER_SOLLECITO_DEMO,
@@ -184,6 +185,35 @@ def _mostra_sezione_instradamento(caso_id: int) -> None:
                 st.rerun()
 
 
+def _mostra_sezione_biopsia(caso_id: int) -> None:
+    """Stato della biopsia, se ne è stata richiesta una: SOLO se è in attesa
+    o se l'esito è disponibile, mai la classificazione istologica — la
+    valutazione clinica resta sempre del dermatologo (vedi CLAUDE.md)."""
+    info = ottieni_stato_biopsia(caso_id)
+    if info is None:
+        return
+
+    st.subheader("Biopsia")
+
+    if info["esito_disponibile"]:
+        st.success(
+            "L'esito dell'esame è disponibile. Il dermatologo la contatterà per "
+            "discutere i risultati e i prossimi passi."
+        )
+    else:
+        st.write(f"Biopsia prenotata per il {info['data_ora_biopsia']}. Siamo in attesa dell'esito di laboratorio.")
+
+
+def _mostra_prossimi_controlli(paziente_id: int) -> None:
+    controlli = ottieni_controlli_periodici(paziente_id)
+    if not controlli:
+        return
+
+    st.subheader("Prossimi controlli")
+    for controllo in controlli:
+        st.write(f"📅 {controllo['data_prevista']} — {controllo['motivo']}")
+
+
 def _mostra_sezione_foto(caso_id: int) -> None:
     st.subheader("Acquisizione foto")
 
@@ -201,6 +231,7 @@ def _mostra_sezione_foto(caso_id: int) -> None:
                 if esito_analisi["destinato_dermatologo"]:
                     st.divider()
                     _mostra_sezione_instradamento(caso_id)
+                    _mostra_sezione_biopsia(caso_id)
             return
         st.divider()
 
@@ -273,6 +304,8 @@ def mostra_pagina() -> None:
 
         st.subheader("Questionario già compilato")
         _mostra_questionario_sola_lettura(dati_questionario)
+
+        _mostra_prossimi_controlli(paziente_id)
 
         colonna_esito, colonna_rigenera = st.columns([3, 2])
         with colonna_esito:

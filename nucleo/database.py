@@ -20,7 +20,7 @@ PERCORSO_DATABASE = _CARTELLA_PROGETTO / "data" / "skinscan.db"
 # La versione è registrata nel database stesso (PRAGMA user_version, un intero
 # integrato in SQLite pensato apposta per questo). Vedi inizializza_database()
 # per cosa succede quando non coincide.
-VERSIONE_SCHEMA = 2
+VERSIONE_SCHEMA = 3
 
 
 def ottieni_connessione() -> sqlite3.Connection:
@@ -154,11 +154,24 @@ CREATE TABLE IF NOT EXISTS appuntamenti (
     stato TEXT NOT NULL DEFAULT 'proposto'
 );
 
--- Esiti istologici caricati dal paziente dopo una biopsia.
+-- Esiti istologici caricati dal dermatologo dopo una biopsia (agente FOLLOW-UP).
+-- classificazione: scelta tra un vocabolario fisso (vedi nucleo/registro_audit.py),
+-- non testo libero, perché il registro di audit deve poter distinguere in modo
+-- affidabile benigno da maligno. categoria_confronto è calcolata UNA VOLTA, al
+-- momento del caricamento (nucleo.registro_audit.categorizza_confronto), e salvata
+-- qui: così la pagina di audit resta una semplice somma di conteggi, e i casi
+-- storici fittizi (generati con la stessa funzione) non possono mai discostarsi
+-- dalla logica usata sui casi reali.
 CREATE TABLE IF NOT EXISTS esiti_istologici (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     caso_id INTEGER NOT NULL REFERENCES casi(id),
-    esito_testo TEXT NOT NULL,
+    classificazione TEXT NOT NULL CHECK (classificazione IN (
+        'benigno', 'melanoma_in_situ', 'melanoma_invasivo', 'altra_lesione_maligna', 'non_diagnostico'
+    )),
+    categoria_confronto TEXT NOT NULL CHECK (categoria_confronto IN (
+        'concordanza', 'falso_positivo', 'falso_negativo', 'non_conclusivi',
+        'recuperato_da_regola_sicurezza', 'istologico_non_diagnostico'
+    )),
     data_caricamento TEXT NOT NULL
 );
 
