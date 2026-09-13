@@ -1,9 +1,18 @@
 """
 Test dell'agente ACCOGLIENZA: verifica il triage sui 4 pazienti demo e la
 resilienza quando il modello linguistico non è raggiungibile.
+
+Questo file non fa MAI chiamate reali al modello linguistico (vedi CLAUDE.md,
+sezione 11): il modello è disattivato subito qui sotto, prima di importare
+qualunque modulo del progetto, così anche eseguendo il file direttamente
+(non solo con pytest) non consuma quota. Per una vera chiamata a Gemini vedi
+test/verifica_connessione_gemini.py (da lanciare a parte, su richiesta).
 """
 
 import os
+
+os.environ["DISATTIVA_MODELLO"] = "true"
+
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -12,8 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nucleo.database import inizializza_database, ottieni_connessione
 from agenti.accoglienza import valuta_questionario
-
-_VALORE_ORIGINALE_DISATTIVA_MODELLO = None
 
 
 def _id_paziente(nome: str) -> int:
@@ -27,21 +34,7 @@ def _id_paziente(nome: str) -> int:
 
 
 def setup_module(module):
-    # Le funzioni test_* sotto verificano priorità/percorso/testo non vuoto, non
-    # il contenuto generato da Gemini: le eseguiamo con il modello disattivato,
-    # così un normale `pytest` non consuma mai quota. La verifica con chiamate
-    # reali resta nel blocco __main__, eseguito solo manualmente.
-    global _VALORE_ORIGINALE_DISATTIVA_MODELLO
-    _VALORE_ORIGINALE_DISATTIVA_MODELLO = os.environ.get("DISATTIVA_MODELLO")
-    os.environ["DISATTIVA_MODELLO"] = "true"
     inizializza_database()
-
-
-def teardown_module(module):
-    if _VALORE_ORIGINALE_DISATTIVA_MODELLO is None:
-        os.environ.pop("DISATTIVA_MODELLO", None)
-    else:
-        os.environ["DISATTIVA_MODELLO"] = _VALORE_ORIGINALE_DISATTIVA_MODELLO
 
 
 def test_marta_rischio_alto_percorso_completo_dermatologo():
@@ -104,9 +97,9 @@ def test_esito_viene_salvato_nel_database():
 
 
 if __name__ == "__main__":
-    # Una sola valutazione reale per paziente demo (risparmia quota Gemini):
-    # le assert sotto riusano questi stessi risultati invece di richiamare
-    # valuta_questionario() una seconda volta.
+    # Modello disattivato (vedi in cima al file): una sola valutazione per
+    # paziente demo, con i testi di riserva. Le assert sotto riusano questi
+    # stessi risultati invece di richiamare valuta_questionario() una seconda volta.
     inizializza_database()
 
     risultati_attesi = {

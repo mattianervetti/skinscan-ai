@@ -99,10 +99,12 @@ Procedura di pubblicazione aggiornamenti: commit e push sul ramo main su GitHub 
 - Non installare pacchetti non necessari. Tieni sempre aggiornato requirements.txt.
 - Non creare file fuori dalla cartella del progetto.
 - Quando si modifica lo schema del database (nuova tabella, nuova colonna, CHECK cambiato, ecc.) va SEMPRE incrementato nucleo/database.py::VERSIONE_SCHEMA. Altrimenti un database già creato in precedenza (in locale o online) resta con lo schema vecchio e le query sulle colonne nuove falliscono con errori tipo "table X has no column named Y" — già successo tre volte prima di introdurre questo meccanismo.
+- I test automatici (tutti i file test/test_*.py) NON devono MAI fare chiamate reali al modello linguistico: ognuno disattiva DISATTIVA_MODELLO=true in cima al file, prima di importare qualunque modulo del progetto, così anche lanciato direttamente (non solo con pytest) resta gratuito e la suite intera gira in pochi secondi. L'UNICA eccezione ammessa è test/verifica_connessione_gemini.py: uno script separato, apposta senza il prefisso "test_" perché non venga mai eseguito insieme agli altri, dedicato a una vera chiamata di verifica (connessione, chiave API, catena di modelli). Motivo: da qui alla Fase 3 (Supervisore, tutti gli agenti in un grafo LangGraph) la suite verrà lanciata decine di volte — se costa minuti e quota, prima o poi si smette di lanciarla e le regressioni si scoprono troppo tardi. Successo già il 13/09/2026: 4 file su 11 facevano chiamate reali per una dimenticanza (mancava la disattivazione nel blocco __main__), portando la suite a ~10 minuti.
 
 ## 11. Comandi utili (PowerShell, dalla cartella del progetto)
 - Avviare l'app: `.\.venv\Scripts\python.exe -m streamlit run app.py` (si ferma con Ctrl+C)
-- Test modulo Gemini: `.\.venv\Scripts\python.exe .\test\test_modello_linguistico.py`
+- Test modulo Gemini (solo simulato, nessuna chiamata reale): `.\.venv\Scripts\python.exe .\test\test_modello_linguistico.py`
+- Verifica REALE della connessione a Gemini (consuma quota, da lanciare solo su richiesta): `.\.venv\Scripts\python.exe .\test\verifica_connessione_gemini.py`
 - Test database: `.\.venv\Scripts\python.exe .\test\test_database.py`
 - Test app: `.\.venv\Scripts\python.exe .\test\test_app.py`
 - Test regole di triage: `.\.venv\Scripts\python.exe .\test\test_regole_sicurezza.py`

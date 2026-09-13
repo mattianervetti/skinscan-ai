@@ -2,9 +2,17 @@
 Test dell'agente GUIDA ALLA FOTO: verifica la regola di non esclusione dopo 3
 tentativi falliti, la resilienza senza modello linguistico, e la registrazione
 di ogni tentativo nel registro.
+
+Questo file non fa MAI chiamate reali al modello linguistico (vedi CLAUDE.md,
+sezione 11): il modello è disattivato subito qui sotto, prima di importare
+qualunque modulo del progetto. Per una vera chiamata a Gemini vedi
+test/verifica_connessione_gemini.py (da lanciare a parte, su richiesta).
 """
 
 import os
+
+os.environ["DISATTIVA_MODELLO"] = "true"
+
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -16,23 +24,9 @@ from nucleo.dati_demo import genera_immagini_demo
 from agenti.accoglienza import valuta_questionario
 from agenti.guida_foto import TENTATIVI_MASSIMI, valuta_foto
 
-_VALORE_ORIGINALE_DISATTIVA_MODELLO = None
-
 
 def setup_module(module):
-    # I test verificano misure/decisioni (deterministiche), non il testo
-    # generato da Gemini: eseguiti col modello disattivato, zero consumo quota.
-    global _VALORE_ORIGINALE_DISATTIVA_MODELLO
-    _VALORE_ORIGINALE_DISATTIVA_MODELLO = os.environ.get("DISATTIVA_MODELLO")
-    os.environ["DISATTIVA_MODELLO"] = "true"
     inizializza_database()
-
-
-def teardown_module(module):
-    if _VALORE_ORIGINALE_DISATTIVA_MODELLO is None:
-        os.environ.pop("DISATTIVA_MODELLO", None)
-    else:
-        os.environ["DISATTIVA_MODELLO"] = _VALORE_ORIGINALE_DISATTIVA_MODELLO
 
 
 def _id_paziente(nome: str) -> int:

@@ -5,9 +5,17 @@ e la resilienza senza modello linguistico.
 Il test più importante è quello di Giulia: un esito rassicurante del
 classificatore NON deve mai chiudere il caso quando il paziente ha dichiarato
 che un neo è cambiato.
+
+Questo file non fa MAI chiamate reali al modello linguistico (vedi CLAUDE.md,
+sezione 11): il modello è disattivato subito qui sotto, prima di importare
+qualunque modulo del progetto. Per una vera chiamata a Gemini vedi
+test/verifica_connessione_gemini.py (da lanciare a parte, su richiesta).
 """
 
 import os
+
+os.environ["DISATTIVA_MODELLO"] = "true"
+
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -20,21 +28,9 @@ from agenti.accoglienza import valuta_questionario
 from agenti.guida_foto import valuta_foto
 from agenti.analisi import analizza_caso
 
-_VALORE_ORIGINALE_DISATTIVA_MODELLO = None
-
 
 def setup_module(module):
-    global _VALORE_ORIGINALE_DISATTIVA_MODELLO
-    _VALORE_ORIGINALE_DISATTIVA_MODELLO = os.environ.get("DISATTIVA_MODELLO")
-    os.environ["DISATTIVA_MODELLO"] = "true"
     inizializza_database()
-
-
-def teardown_module(module):
-    if _VALORE_ORIGINALE_DISATTIVA_MODELLO is None:
-        os.environ.pop("DISATTIVA_MODELLO", None)
-    else:
-        os.environ["DISATTIVA_MODELLO"] = _VALORE_ORIGINALE_DISATTIVA_MODELLO
 
 
 def _id_paziente(nome: str) -> int:

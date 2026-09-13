@@ -3,8 +3,12 @@ Test del modulo nucleo/modello_linguistico.py.
 
 Le funzioni test_* (eseguibili anche con pytest) verificano SOLO il meccanismo
 della catena di ripiego e l'interruttore per lo sviluppo, tramite simulazioni:
-non consumano quota. La verifica con una chiamata reale a Gemini è isolata nel
-blocco __main__, così un normale `pytest` non consuma mai quota per sbaglio.
+NON fanno mai una chiamata reale a Gemini e non consumano quota (vedi
+CLAUDE.md, sezione 11: la suite non deve mai chiamare il modello davvero).
+Per una vera chiamata a Gemini (verifica di connessione e catena di modelli)
+usa il file separato test/verifica_connessione_gemini.py, da lanciare a parte
+quando serve: non fa parte di questa suite e non viene eseguito insieme agli
+altri test.
 
 Non stampa mai la chiave API.
 
@@ -155,14 +159,4 @@ if __name__ == "__main__":
     test_interruttore_disattiva_il_modello(_FintoMonkeypatch())
     print("OK - interruttore DISATTIVA_MODELLO funzionante")
 
-    # Unica chiamata REALE di tutto il file: consuma una richiesta di quota sul
-    # primo modello della catena. Non aggiungere altre chiamate reali qui sopra.
-    print(f"\nCatena di modelli configurata: {CATENA_MODELLI}")
-    print("Eseguo UNA chiamata reale di prova...")
-    risposta, nome_modello = chiedi_al_modello(
-        "Rispondi con una sola frase breve in italiano per confermare che la connessione funziona."
-    )
-    print(f"Modello che ha risposto: {nome_modello}")
-    print("Risposta:", risposta)
-    assert len(risposta.strip()) > 0
-    print("\nTEST SUPERATO")
+    print("\nTEST SUPERATO (nessuna chiamata reale: vedi test/verifica_connessione_gemini.py per quella)")

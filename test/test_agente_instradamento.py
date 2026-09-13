@@ -6,9 +6,20 @@ solleciti senza risposta, prenotazione della biopsia.
 Il test più importante è quello dei solleciti (scenario di Paolo nella demo:
 non conferma la televisita, riceve 2 solleciti, poi viene scalato a un
 operatore umano).
+
+Questo file non fa MAI chiamate reali al modello linguistico (vedi CLAUDE.md,
+sezione 11): il modello è disattivato subito qui sotto, prima di importare
+qualunque modulo del progetto. Serve perché aprire un caso fino allo stato
+'in_coda_dermatologo' (vedi _apri_caso_destinato_al_dermatologo) passa anche
+per gli Agenti ACCOGLIENZA, GUIDA ALLA FOTO e ANALISI, che il modello lo
+userebbero davvero se non fosse disattivato. Per una vera chiamata a Gemini
+vedi test/verifica_connessione_gemini.py (da lanciare a parte, su richiesta).
 """
 
 import os
+
+os.environ["DISATTIVA_MODELLO"] = "true"
+
 import sys
 from pathlib import Path
 
@@ -28,21 +39,9 @@ from agenti.instradamento import (
     sollecita_appuntamento,
 )
 
-_VALORE_ORIGINALE_DISATTIVA_MODELLO = None
-
 
 def setup_module(module):
-    global _VALORE_ORIGINALE_DISATTIVA_MODELLO
-    _VALORE_ORIGINALE_DISATTIVA_MODELLO = os.environ.get("DISATTIVA_MODELLO")
-    os.environ["DISATTIVA_MODELLO"] = "true"
     inizializza_database()
-
-
-def teardown_module(module):
-    if _VALORE_ORIGINALE_DISATTIVA_MODELLO is None:
-        os.environ.pop("DISATTIVA_MODELLO", None)
-    else:
-        os.environ["DISATTIVA_MODELLO"] = _VALORE_ORIGINALE_DISATTIVA_MODELLO
 
 
 def _id_paziente(nome: str) -> int:
