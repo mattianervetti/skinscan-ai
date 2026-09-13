@@ -11,7 +11,15 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+
+# ChatGoogleGenerativeAI viene importato più sotto, dentro chiedi_al_modello,
+# non qui in cima al file: importarlo qui lo eseguirebbe SEMPRE, anche quando
+# DISATTIVA_MODELLO=true, vanificando lo scopo dell'interruttore (lavorare
+# sull'interfaccia senza toccare Gemini). Rilevante anche perché quell'import
+# trascina una libreria nativa (uuid_utils) che su alcuni PC Windows può essere
+# bloccata da un criterio di controllo delle applicazioni (Windows Defender
+# Application Control/Smart App Control): con l'import rimandato, quel
+# problema non impedisce più lo sviluppo a interruttore attivo.
 
 
 # Catena di modelli da provare in ordine: se il primo esaurisce la quota
@@ -182,6 +190,8 @@ def chiedi_al_modello(domanda: str, istruzione_di_sistema: str | None = None) ->
     """
     if modello_disattivato():
         raise RuntimeError(_MESSAGGIO_MODELLO_DISATTIVATO)
+
+    from langchain_google_genai import ChatGoogleGenerativeAI
 
     chiave_api = _ottieni_chiave_api()
 

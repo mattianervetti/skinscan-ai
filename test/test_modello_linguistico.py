@@ -7,10 +7,27 @@ non consumano quota. La verifica con una chiamata reale a Gemini è isolata nel
 blocco __main__, così un normale `pytest` non consuma mai quota per sbaglio.
 
 Non stampa mai la chiave API.
+
+Nota su come vengono simulati i modelli: chiedi_al_modello() importa
+ChatGoogleGenerativeAI da langchain_google_genai dentro la funzione stessa
+(non in cima al modulo nucleo/modello_linguistico.py), per non trascinare
+quella libreria nell'avvio dell'app quando DISATTIVA_MODELLO=true (vedi il
+commento in quel file). langchain_google_genai carica a sua volta una
+libreria nativa (uuid_utils) che su questa macchina un criterio di controllo
+delle applicazioni di Windows ha bloccato in modo intermittente anche in un
+semplice `import langchain_google_genai` isolato, senza nessun nostro
+codice di mezzo — non è quindi affidabile importare davvero quella libreria
+durante i test, nemmeno solo per sostituirne un attributo con patch().
+Per questo qui si inserisce un modulo finto direttamente in sys.modules al
+posto di "langchain_google_genai", PRIMA che chiedi_al_modello() provi a
+importarlo: così il suo `from langchain_google_genai import
+ChatGoogleGenerativeAI` trova subito il finto, senza mai eseguire il vero
+import (e senza mai toccare la libreria nativa bloccata).
 """
 
 import os
 import sys
+import types
 from pathlib import Path
 from unittest.mock import patch
 
@@ -48,6 +65,16 @@ def _crea_fabbrica_modelli(comportamento_per_modello: dict[str, object], chiamat
     return fabbrica
 
 
+def _langchain_google_genai_finto(fabbrica_modello):
+    """Contesto che sostituisce sys.modules['langchain_google_genai'] con un
+    modulo finto contenente solo un ChatGoogleGenerativeAI di prova, così
+    chiedi_al_modello() non importa mai davvero la libreria reale (vedi nota
+    in cima al file). Ripristina lo stato precedente di sys.modules all'uscita."""
+    modulo_finto = types.ModuleType("langchain_google_genai")
+    modulo_finto.ChatGoogleGenerativeAI = fabbrica_modello
+    return patch.dict(sys.modules, {"langchain_google_genai": modulo_finto})
+
+
 def test_passa_al_modello_successivo_se_il_primo_esaurisce_la_quota():
     chiamate: list[str] = []
     comportamento = {
@@ -55,7 +82,7 @@ def test_passa_al_modello_successivo_se_il_primo_esaurisce_la_quota():
         CATENA_MODELLI[1]: "risposta di prova",
     }
 
-    with patch("nucleo.modello_linguistico.ChatGoogleGenerativeAI", side_effect=_crea_fabbrica_modelli(comportamento, chiamate)), \
+    with _langchain_google_genai_finto(_crea_fabbrica_modelli(comportamento, chiamate)), \
          patch("nucleo.modello_linguistico._ottieni_chiave_api", return_value="chiave-finta"), \
          patch("nucleo.modello_linguistico.modello_disattivato", return_value=False):
         testo, nome_modello = chiedi_al_modello("domanda di prova")
@@ -69,7 +96,7 @@ def test_errore_non_di_quota_non_fa_ciclare_sugli_altri_modelli():
     chiamate: list[str] = []
     comportamento = {CATENA_MODELLI[0]: Exception("chiave API non valida (PERMISSION_DENIED)")}
 
-    with patch("nucleo.modello_linguistico.ChatGoogleGenerativeAI", side_effect=_crea_fabbrica_modelli(comportamento, chiamate)), \
+    with _langchain_google_genai_finto(_crea_fabbrica_modelli(comportamento, chiamate)), \
          patch("nucleo.modello_linguistico._ottieni_chiave_api", return_value="chiave-finta"), \
          patch("nucleo.modello_linguistico.modello_disattivato", return_value=False):
         try:
@@ -85,7 +112,7 @@ def test_tutti_i_modelli_esauriti_solleva_errore_di_quota_tradotto():
     chiamate: list[str] = []
     comportamento = {nome: Exception("429 RESOURCE_EXHAUSTED") for nome in CATENA_MODELLI}
 
-    with patch("nucleo.modello_linguistico.ChatGoogleGenerativeAI", side_effect=_crea_fabbrica_modelli(comportamento, chiamate)), \
+    with _langchain_google_genai_finto(_crea_fabbrica_modelli(comportamento, chiamate)), \
          patch("nucleo.modello_linguistico._ottieni_chiave_api", return_value="chiave-finta"), \
          patch("nucleo.modello_linguistico.modello_disattivato", return_value=False):
         try:
