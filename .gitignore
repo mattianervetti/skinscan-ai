@@ -13,6 +13,12 @@ __pycache__/
 *.sqlite
 *.sqlite3
 
+# File collaterali della modalità WAL di SQLite (usata anche dallo stato
+# salvato del grafo, data/stato_grafo.db): non finiscono in ".db", *.db sopra
+# non li copre.
+*.db-wal
+*.db-shm
+
 # Immagini caricate dagli utenti durante l'uso dell'app
 data/uploads/
 

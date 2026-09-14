@@ -340,10 +340,15 @@ def inizializza_database() -> None:
 
 def resetta_database() -> None:
     """Cancella tutti i dati e ricarica da zero i pazienti demo nella situazione
-    di partenza (compresa la data simulata, riportata alla data reale). Utile
-    per rifare la demo dal vivo senza riavviare l'applicazione."""
+    di partenza (compresa la data simulata, riportata alla data reale; e lo
+    stato salvato del grafo LangGraph, Fase 3 passo 2, così un percorso fermato
+    a metà nella sessione precedente non riemerga dopo il reset). Utile per
+    rifare la demo dal vivo senza riavviare l'applicazione."""
+    from agenti.grafo import cancella_stato_grafo
     from nucleo.dati_demo import popola_dati_demo
     from nucleo.tempo_simulato import inizializza_data_simulata
+
+    cancella_stato_grafo()
 
     connessione = ottieni_connessione()
     try:

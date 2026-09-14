@@ -23,9 +23,27 @@ grafo, per ora, esegue dall'inizio alla fine in un'unica chiamata a invoke().
 NON ANCORA COLLEGATO ALL'INTERFACCIA: pages/*.py e app.py continuano a
 chiamare gli agenti direttamente, esattamente come oggi. Questo modulo esiste
 accanto al sistema che funziona, non lo sostituisce.
+
+PERSISTENZA DELLO STATO (Fase 3, passo 2): costruisci_grafo() accetta ora due
+parametri opzionali, checkpointer e interrupt_before, entrambi None di
+default — con i default, il comportamento è IDENTICO al passo 1 (nessuna
+persistenza, esecuzione dall'inizio alla fine in un'unica invoke()), quindi i
+test del passo 1 restano validi senza modifiche. Il salvataggio vero e proprio
+usa langgraph-checkpoint-sqlite (SqliteSaver), in un file SEPARATO dal database
+clinico (data/stato_grafo.db): quel file ha uno schema tecnico gestito in
+automatico dalla libreria, che non ha nulla a che fare con
+nucleo.database.VERSIONE_SCHEMA.
+
+NON ANCORA IMPLEMENTATO: il meccanismo di interruzione per l'approvazione del
+dermatologo (arriva al passo 3.3). Il parametro interrupt_before esposto qui è
+la funzionalità già pronta di LangGraph usata SOLO nei test di questo passo,
+per verificare che lo stato salvato sia corretto fermando il grafo a metà in
+modo controllato — non è ancora il meccanismo di human-in-the-loop.
 """
 
 import operator
+import sqlite3
+from pathlib import Path
 from typing import Annotated, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -35,6 +53,51 @@ from agenti.analisi import analizza_caso
 from agenti.followup import carica_esito_istologico
 from agenti.guida_foto import valuta_foto
 from agenti.instradamento import instrada_caso
+
+# File SQLite dedicato allo stato salvato del grafo (checkpointer), separato dal
+# database clinico (data/skinscan.db). Stesso stile di calcolo del percorso già
+# usato in nucleo/database.py: relativo alla cartella del progetto, funziona
+# identico su Windows e su Linux (Streamlit Community Cloud).
+_CARTELLA_PROGETTO = Path(__file__).resolve().parent.parent
+PERCORSO_DATABASE_GRAFO = _CARTELLA_PROGETTO / "data" / "stato_grafo.db"
+
+
+def ottieni_connessione_stato_grafo() -> sqlite3.Connection:
+    """Apre una connessione al file dello stato salvato del grafo, creando la
+    cartella data/ se non esiste. check_same_thread=False perché Streamlit può
+    eseguire il codice da thread diversi tra un'interazione e l'altra;
+    SqliteSaver gestisce comunque l'accesso in sicurezza con un lucchetto
+    interno (threading.Lock), quindi due operazioni non si accavallano mai."""
+    PERCORSO_DATABASE_GRAFO.parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(PERCORSO_DATABASE_GRAFO, check_same_thread=False)
+
+
+def cancella_stato_grafo() -> None:
+    """Cancella il file dello stato salvato del grafo (e gli eventuali file
+    di supporto della modalità WAL, -wal e -shm). Va richiamata da
+    nucleo.database.resetta_database(): senza questo passaggio, dopo un reset
+    della demo il grafo riprenderebbe il percorso a metà della sessione
+    precedente invece di ripartire da capo — un problema concreto per una
+    demo che va rifatta più volte, non solo teorico."""
+    for suffisso in ("", "-wal", "-shm"):
+        percorso = PERCORSO_DATABASE_GRAFO.with_name(PERCORSO_DATABASE_GRAFO.name + suffisso)
+        if percorso.exists():
+            percorso.unlink()
+
+
+def thread_id_per_paziente(paziente_id: int) -> str:
+    """Identificativo di esecuzione (thread_id) per il checkpointer del grafo.
+
+    LIMITE CONSAPEVOLE, da riconsiderare se in futuro un paziente potesse avere
+    più percorsi/lesioni monitorati in parallelo (non oggi: nessuno dei 4
+    pazienti demo lo fa): un solo percorso attivo per paziente alla volta. Non
+    si usa caso_id perché il caso non esiste ancora quando il grafo parte (lo
+    crea il nodo ACCOGLIENZA stesso, chiamando valuta_questionario) — non si
+    può ricavare un identificativo da qualcosa che non esiste ancora alla
+    prima chiamata. paziente_id invece è disponibile fin dall'inizio, ed è
+    comunque ricavabile a partire da un caso già aperto (ogni riga della
+    tabella casi contiene il proprio paziente_id)."""
+    return f"paziente-{paziente_id}"
 
 
 class StatoGrafo(TypedDict):
@@ -151,10 +214,25 @@ def _dopo_instradamento(stato: StatoGrafo) -> str:
     return "followup" if stato.get("esito_istologico_da_caricare") else END
 
 
-def costruisci_grafo():
-    """Costruisce e compila il grafo. Nessun checkpointer: per questo passo
-    il grafo esegue dall'inizio alla fine in un'unica chiamata a invoke(),
-    senza persistenza tra una chiamata e l'altra (arriverà nel passo 3.2)."""
+def costruisci_grafo(*, checkpointer=None, interrupt_before=None):
+    """Costruisce e compila il grafo.
+
+    Con i parametri di default (checkpointer=None, interrupt_before=None) il
+    comportamento è identico al passo 1: il grafo esegue dall'inizio alla fine
+    in un'unica chiamata a invoke(), senza persistenza. Tutte le chiamate
+    esistenti (test del passo 1, eventuale uso futuro senza persistenza)
+    restano quindi valide senza modifiche.
+
+    checkpointer: un'istanza di SqliteSaver (langgraph.checkpoint.sqlite) per
+    salvare e riprendere lo stato tra una chiamata e l'altra. Va costruita e
+    chiusa da chi chiama, sulla connessione ottenuta da
+    ottieni_connessione_stato_grafo() — questo modulo non tiene mai aperta una
+    connessione tra una chiamata e l'altra.
+
+    interrupt_before: elenco di nomi di nodi prima dei quali fermarsi. Usato
+    SOLO nei test di questo passo per verificare lo stato salvato fermando il
+    grafo a metà in modo controllato; non è il meccanismo di
+    human-in-the-loop per il dermatologo (passo 3.3)."""
     grafo = StateGraph(StatoGrafo)
 
     grafo.add_node("accoglienza", nodo_accoglienza)
@@ -178,7 +256,7 @@ def costruisci_grafo():
     )
     grafo.add_edge("followup", END)
 
-    return grafo.compile()
+    return grafo.compile(checkpointer=checkpointer, interrupt_before=interrupt_before)
 
 
 if __name__ == "__main__":
