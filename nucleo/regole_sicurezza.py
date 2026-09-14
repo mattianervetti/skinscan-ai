@@ -207,3 +207,70 @@ def decidi_destinazione_dopo_analisi(*, gia_destinato_dermatologo: bool, classif
         "destinato_dermatologo": False,
         "motivo": "Esito rassicurante e nessun altro fattore di rischio attivo: il caso prosegue con i controlli di routine.",
     }
+
+
+# Le 5 azioni possibili per la decisione del dermatologo su un caso in coda
+# (Fase 3, passo 3). Vocabolario fisso, mai testo libero: lo stesso principio
+# già seguito per le classificazioni istologiche (nucleo/registro_audit.py).
+AZIONI_DERMATOLOGO_POSSIBILI = (
+    "approva_televisita",
+    "richiedi_biopsia",
+    "chiudi_caso",
+    "richiedi_nuova_foto",
+    "convoca_ambulatorio",
+)
+
+
+def decidi_proposta_dermatologo(*, classificazione_algoritmo: str, qualita_foto_insufficiente: bool) -> dict:
+    """Calcola cosa il sistema propone di fare per un caso in coda al
+    dermatologo, in modo deterministico (mai il modello linguistico, come
+    tutte le altre regole di questo file).
+
+    PRINCIPIO DI SICUREZZA (da non allentare mai): il sistema può proporre di
+    approfondire, mai di interrompere. Per questo NON propone mai
+    'chiudi_caso': la decisione di non fare altro resta ESCLUSIVAMENTE del
+    dermatologo, mai un suggerimento del codice. Coerente con "nessuna
+    decisione clinica agli agenti" (vedi CLAUDE.md, sezione 3).
+
+    Regola:
+    - qualità della foto insufficiente (accettata comunque per la regola di
+      non esclusione dell'agente GUIDA ALLA FOTO) → convoca in ambulatorio:
+      è il caso d'uso principale di questa opzione, un esame di persona
+      risolve un problema che nessuna nuova foto da remoto ha risolto;
+    - esito del classificatore "sospetta" → richiedi biopsia;
+    - esito "non conclusiva" → richiedi una nuova foto (il contenuto
+      dell'immagine non bastava a farsi un'idea, non è un problema di qualità
+      tecnica: vedi la distinzione con 'qualita_foto_insufficiente' sopra);
+    - esito "probabilmente benigna" → approva e procedi con la televisita.
+
+    Restituisce {"proposta": str, "motivo": str}.
+    """
+    if qualita_foto_insufficiente:
+        return {
+            "proposta": "convoca_ambulatorio",
+            "motivo": (
+                "La qualità della foto era insufficiente ed è stata accettata comunque dopo "
+                "3 tentativi: un esame di persona permette di vedere la lesione senza dipendere "
+                "da un'altra foto da remoto."
+            ),
+        }
+
+    if classificazione_algoritmo == "sospetta":
+        return {
+            "proposta": "richiedi_biopsia",
+            "motivo": "Il classificatore simulato ha segnalato un esito sospetto.",
+        }
+
+    if classificazione_algoritmo == "non_conclusiva":
+        return {
+            "proposta": "richiedi_nuova_foto",
+            "motivo": "Il classificatore simulato non è riuscito a esprimersi sul contenuto dell'immagine.",
+        }
+
+    if classificazione_algoritmo == "probabilmente_benigna":
+        return {
+            "proposta": "approva_televisita",
+            "motivo": "Il classificatore simulato ha segnalato un esito rassicurante.",
+        }
+
+    raise ValueError(f"classificazione_algoritmo non valida: {classificazione_algoritmo!r}")

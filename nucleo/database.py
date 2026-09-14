@@ -20,7 +20,7 @@ PERCORSO_DATABASE = _CARTELLA_PROGETTO / "data" / "skinscan.db"
 # La versione è registrata nel database stesso (PRAGMA user_version, un intero
 # integrato in SQLite pensato apposta per questo). Vedi inizializza_database()
 # per cosa succede quando non coincide.
-VERSIONE_SCHEMA = 3
+VERSIONE_SCHEMA = 4
 
 
 def ottieni_connessione() -> sqlite3.Connection:
@@ -113,10 +113,28 @@ CREATE TABLE IF NOT EXISTS casi (
     qualita_foto_insufficiente INTEGER NOT NULL DEFAULT 0 CHECK (qualita_foto_insufficiente IN (0,1))
 );
 
--- Decisioni del dermatologo su un caso: approvazione o modifica.
+-- Decisioni del dermatologo su un caso in coda (Fase 3, passo 3: nodo
+-- decisione_dermatologo del grafo dedicato al tratto umano). azione_scelta e
+-- proposta_sistema sono vocabolario fisso (le 5 opzioni possibili, vedi
+-- nucleo/regole_sicurezza.py::AZIONI_DERMATOLOGO_POSSIBILI), mai testo libero,
+-- stesso principio già seguito per la classificazione istologica: il registro
+-- di audit deve poter contare in modo affidabile quante volte il dermatologo
+-- ha confermato la proposta del sistema e quante volte l'ha modificata (unica
+-- prova che la supervisione umana incida davvero, non sia una formalità).
+-- proposta_sistema è salvata al momento della decisione (non ricalcolata dopo,
+-- alla lettura): se la regola di proposta cambierà in futuro, l'audit
+-- storico deve continuare a riflettere cosa fu proposto ALLORA, non cosa
+-- proporrebbe la regola nuova — stesso principio già seguito per
+-- esiti_istologici.categoria_confronto.
 CREATE TABLE IF NOT EXISTS decisioni_dermatologo (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     caso_id INTEGER NOT NULL REFERENCES casi(id),
+    proposta_sistema TEXT NOT NULL CHECK (proposta_sistema IN (
+        'approva_televisita', 'richiedi_biopsia', 'chiudi_caso', 'richiedi_nuova_foto', 'convoca_ambulatorio'
+    )),
+    azione_scelta TEXT NOT NULL CHECK (azione_scelta IN (
+        'approva_televisita', 'richiedi_biopsia', 'chiudi_caso', 'richiedi_nuova_foto', 'convoca_ambulatorio'
+    )),
     decisione TEXT NOT NULL CHECK (decisione IN ('approvato', 'modificato')),
     motivo TEXT,
     data TEXT NOT NULL

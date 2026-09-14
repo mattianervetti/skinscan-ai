@@ -18,6 +18,7 @@ from nucleo.registro_audit import (
     CATEGORIA_RECUPERATO_DA_REGOLA_SICUREZZA,
     ETICHETTE_CATEGORIA,
     calcola_riepilogo_audit,
+    calcola_riepilogo_supervisione_umana,
 )
 
 _DESCRIZIONI_CATEGORIA = {
@@ -84,3 +85,30 @@ def mostra_pagina() -> None:
     )
     if conteggi[CATEGORIA_ISTOLOGICO_NON_DIAGNOSTICO] > 0:
         st.caption(_DESCRIZIONI_CATEGORIA[CATEGORIA_ISTOLOGICO_NON_DIAGNOSTICO])
+
+    _mostra_sezione_supervisione_umana()
+
+
+def _mostra_sezione_supervisione_umana() -> None:
+    """Quante volte il dermatologo ha confermato la proposta del sistema per un
+    caso in coda, e quante volte l'ha modificata (Fase 3, passo 3). Conteggio
+    SEPARATO dal confronto classificatore/istologico sopra: qui si confronta
+    la proposta del sistema con la scelta del dermatologo, non l'ipotesi
+    dell'algoritmo con l'esito di laboratorio. È l'unica prova che la
+    supervisione umana dichiarata dal progetto incida davvero, non sia una
+    formalità (vedi nucleo/registro_audit.py)."""
+    riepilogo = calcola_riepilogo_supervisione_umana()
+    if riepilogo["totale"] == 0:
+        return
+
+    st.divider()
+    st.subheader("Supervisione umana sulle decisioni")
+    st.caption(
+        "Quante volte il dermatologo ha confermato la proposta del sistema per un caso in "
+        "coda, e quante volte l'ha modificata. Il sistema può proporre di approfondire, mai "
+        "di interrompere: chiudere un caso senza accertamenti resta sempre una scelta "
+        "esclusiva del dermatologo."
+    )
+    colonne_supervisione = st.columns(2)
+    colonne_supervisione[0].metric("Proposta confermata", riepilogo["conteggi"]["approvato"])
+    colonne_supervisione[1].metric("Proposta modificata", riepilogo["conteggi"]["modificato"])

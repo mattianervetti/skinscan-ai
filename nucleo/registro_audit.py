@@ -137,3 +137,32 @@ def calcola_riepilogo_audit() -> dict:
         conteggi[categoria] += 1
 
     return {"conteggi": conteggi, "totale": len(righe)}
+
+
+def calcola_riepilogo_supervisione_umana() -> dict:
+    """Conta quante decisioni del dermatologo su un caso in coda (Fase 3,
+    passo 3: agenti/decisione_dermatologo.py) hanno confermato la proposta del
+    sistema ('approvato') e quante l'hanno modificata ('modificato').
+
+    Questo è un audit DIVERSO da calcola_riepilogo_audit() sopra (quello
+    confronta il classificatore simulato con l'esito istologico): qui si
+    confronta la proposta del sistema con la scelta del dermatologo. Il numero
+    di volte in cui il dermatologo corregge il sistema è l'unica prova che la
+    supervisione umana dichiarata dal progetto incida davvero sulle decisioni,
+    non sia una formalità — un sistema che si limitasse a osservare quante
+    volte viene "approvato" senza mai contare le modifiche non potrebbe
+    dimostrarlo.
+
+    Restituisce {"conteggi": {"approvato": int, "modificato": int}, "totale": int}.
+    """
+    connessione = ottieni_connessione()
+    try:
+        righe = connessione.execute("SELECT decisione FROM decisioni_dermatologo").fetchall()
+    finally:
+        connessione.close()
+
+    conteggi = {"approvato": 0, "modificato": 0}
+    for (decisione,) in righe:
+        conteggi[decisione] += 1
+
+    return {"conteggi": conteggi, "totale": len(righe)}
